@@ -89,6 +89,15 @@ def report_gif(video: Path, out: Path) -> Path:
     return out
 
 
+def issue_title(description: str, limit: int = 80) -> str:
+    """The reporter's first sentence, cut at a word boundary."""
+    text = " ".join(description.split())
+    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0].rstrip(".!? ") or "Bug report"
+    if len(first) > limit:
+        first = first[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+    return first if len(first) > 8 else f"Bug report: {first}"
+
+
 def submit_report(full_name: str, video: Path, run_id: str, description: str, reporter: str,
                   queue_run) -> dict:
     """A reporter sent a recording through the report link: file the issue, then run."""
@@ -101,8 +110,7 @@ def submit_report(full_name: str, video: Path, run_id: str, description: str, re
 
     gif = report_gif(video, video.with_name("report.gif"))
     gif_url = evidence_put(repo, f"{run_id}/report.gif", gif.read_bytes(), f"report recording for {run_id}")
-    first_line = (description.strip().splitlines() or ["Bug report"])[0][:90]
-    title = first_line if len(first_line) > 8 else f"Bug report: {first_line}"
+    title = issue_title(description)
     who = reporter.strip() or "a reporter"
     body = (f"{description.strip()}\n\n<img src=\"{gif_url}\" width=\"480\" alt=\"Screen recording of the bug\">\n\n"
             f"<sub>Reported by {who} through Gecko's report link.</sub>")

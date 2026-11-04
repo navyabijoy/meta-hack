@@ -129,3 +129,11 @@ def test_bot_command_not_matched_inside_urls():
     assert COMMAND_RE.search("/gecko")
     assert not COMMAND_RE.search("https://raw.githubusercontent.com/o/r/gecko-evidence/x/report.gif")
     assert not COMMAND_RE.search("see path a/gecko/b")
+
+
+def test_issue_title_cuts_at_sentence_or_word():
+    from backend.product import issue_title
+    assert issue_title("Save adds twice. It should add once.") == "Save adds twice"
+    t = issue_title("After I finish a task and switch to Active, deleting a task removes the wrong one and other things go wrong too")
+    assert t.endswith("…") and len(t) <= 81 and not t[:-1].endswith(" ")
+    assert issue_title("broken") == "Bug report: broken"
