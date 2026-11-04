@@ -8,6 +8,11 @@ import { chromium } from '@playwright/test'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+// Icon glyphs users and models write differently: "x", "×", "✕" all mean the same button.
+const GLYPHS = { '×': 'x', '✕': 'x', '✖': 'x', '⨯': 'x', '╳': 'x', '✗': 'x', '🗑': 'trash', '＋': '+', '⋯': '...', '…': '...' }
+const ICON_WORDS = { x: ['close', 'delete', 'remove', 'dismiss', 'clear'], trash: ['delete', 'remove'], '+': ['add', 'new', 'create'] }
+
+
 const input = JSON.parse(readFileSync(0, 'utf8'))
 mkdirSync(input.outDir, { recursive: true })
 
@@ -154,7 +159,8 @@ async function candidates(page) {
 }
 
 function norm(s) {
-  return (s || '').toLowerCase().replace(/[^\p{L}\p{N}×]+/gu, ' ').trim()
+  return (s || '').toLowerCase().replace(/[×✕✖⨯╳✗🗑＋⋯…]/gu, (c) => ` ${GLYPHS[c]} `)
+    .replace(/[^\p{L}\p{N}+.]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function nameScore(c, name) {
@@ -162,10 +168,21 @@ function nameScore(c, name) {
   if (!n) return 0
   const fields = [c.aria, c.label, c.text, c.placeholder].map(norm)
   if (fields.some((f) => f === n)) return 3
+  // Short names ("x", "+") only match whole words, never substrings of other words.
+  if (n.length <= 2) {
+    const icon = ICON_WORDS[n] || []
+    if (fields.some((f) => f.split(' ').includes(n))) return 2.5
+    if (icon.length && fields.some((f) => icon.some((w) => f.split(' ').includes(w)))) return 2
+    return 0
+  }
   if (fields.some((f) => f && (f.includes(n) || n.includes(f)))) return 2
   const words = n.split(' ')
   if (fields.some((f) => words.some((w) => w.length > 2 && f.includes(w)))) return 1
   return 0
+}
+
+function quotedNames(which) {
+  return [...(which || '').matchAll(/['"‘’“”]([^'"‘’“”]+)['"‘’“”]/g)].map((m) => norm(m[1]))
 }
 
 function roleScore(c, role) {
@@ -183,7 +200,32 @@ async function chooseElement(page, step) {
     .filter((x) => x.s >= 2)
     .sort((a, b) => b.s - a.s)
   const meta = { candidates: scored.length }
-  if (!scored.length) return { handle: null, meta: { ...meta, reason: `no element named "${step.name}"` } }
+  if (!scored.length) {
+    // Fallback: the planner's description of the row ("the x on the 'Book flights' row"),
+    // narrowed by role, with the SAM ordinal to break ties.
+    const quoted = quotedNames(step.which)
+    const clickable = ['button', 'link', 'checkbox', 'tab', 'radio']
+    let rows = quoted.length ? all.filter((c) => clickable.includes(c.role) && quoted.some((q) => norm(c.row).includes(q))) : []
+    if (rows.length > 1 && step.role) {
+      const sameRole = rows.filter((c) => c.role === step.role)
+      if (sameRole.length) rows = sameRole
+    }
+    // In a row, the element that is not the row's own text is the control (e.g. the x, not the label).
+    if (rows.length > 1) {
+      const notText = rows.filter((c) => !quoted.some((q) => norm(c.text) === q || norm(c.label) === q))
+      if (notText.length) rows = notText
+    }
+    if (rows.length === 1) {
+      const chosen = rows[0]
+      return {
+        handle: await page.$(`[data-repro-idx="${chosen.idx}"]`),
+        meta: { ...meta, confidence: 'medium', reason: `no element named "${step.name}"; matched by row description`,
+          element: { role: chosen.role, aria: chosen.aria, text: chosen.text, row: chosen.row },
+          locator: await stableLocator(page, chosen) },
+      }
+    }
+    return { handle: null, meta: { ...meta, reason: `no element named "${step.name}"` } }
+  }
 
   const top = scored.filter((x) => x.s === scored[0].s).map((x) => x.c)
   top.sort((a, b) => a.box[1] - b.box[1] || a.box[0] - b.box[0])
@@ -196,7 +238,7 @@ async function chooseElement(page, step) {
     if (step.ordinal != null && step.count === top.length) bySam = top[step.ordinal]
     // Signal 2: the planner's "which" words (quoted names) found in the element's row.
     let byWhich = null
-    const quoted = [...(step.which || '').matchAll(/['"‘’“”]([^'"‘’“”]+)['"‘’“”]/g)].map((m) => norm(m[1]))
+    const quoted = quotedNames(step.which)
     if (quoted.length) byWhich = top.find((c) => quoted.some((q) => norm(c.row).includes(q))) || null
     if (bySam && byWhich) {
       chosen = bySam

@@ -163,6 +163,48 @@ def bot_status():
             "repos": [r.full_name for r in github_app.installed_repos()]}
 
 
+@app.get("/api/dashboard")
+def dashboard():
+    """Aggregates for the team dashboard, computed from run folders, the job table and the ledger."""
+    runs = []
+    for d in sorted(RUNS.iterdir()) if RUNS.exists() else []:
+        sf = d / "summary.json"
+        if not d.is_dir() or not sf.exists():
+            continue
+        s = json.loads(sf.read_text())
+        stages, t_start = {}, {}
+        ev = d / "events.jsonl"
+        for line in ev.read_text().splitlines() if ev.exists() else []:
+            e = json.loads(line)
+            if e.get("kind") == "stage":
+                if e["status"] == "start":
+                    t_start[e["stage"]] = e["t"]
+                elif e["stage"] in t_start:
+                    stages[e["stage"]] = round(e["t"] - t_start[e["stage"]], 1)
+        src = s.get("source") or Path(s.get("repo") or "").name
+        runs.append({
+            "id": s["id"], "status": s.get("status"), "title": (s.get("plan") or {}).get("title"),
+            "source": src, "seconds": s.get("seconds"), "usd": s.get("usd"), "pr_url": s.get("pr_url"),
+            "attempts": s.get("attempts"), "fix_rounds": s.get("fix_rounds"), "stages": stages,
+            "eval": s["id"].startswith("eval-"), "origin": "github" if "-i" in s["id"][-5:] else "web",
+            "day": time.strftime("%Y-%m-%d", time.localtime(d.stat().st_ctime)),
+        })
+    q = jobs.db().execute("SELECT status, COUNT(*) n FROM jobs GROUP BY status").fetchall()
+    bot = {"configured": github_app.configured()}
+    if bot["configured"]:
+        try:
+            bot["repos"] = [r.full_name for r in github_app.installed_repos()]
+        except Exception as e:  # noqa: BLE001
+            bot["error"] = str(e)
+    return {
+        "runs": runs,
+        "queue": {r["status"]: r["n"] for r in q},
+        "workers": jobs.WORKERS,
+        "budget": {"spent": round(budget.spent(), 4), "cap": budget.HARD_CAP_USD, "run_cap": budget.RUN_CAP_USD},
+        "bot": bot,
+    }
+
+
 @app.get("/api/budget")
 def get_budget():
     return {"spent": round(budget.spent(), 4), "cap": budget.HARD_CAP_USD}
@@ -180,6 +222,7 @@ def files(path: str):
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
 def page(run_id: str | None = None):
     return (WEB / "index.html").read_text()

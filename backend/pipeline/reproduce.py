@@ -219,6 +219,13 @@ def run(ing: Ingested, plan: dict, grounding: list[dict], tgt: Target, out: Path
         result.reproduced = True
         return result
 
+    if not a.replay.get("ok"):
+        # The replay could not find or act on an element. Guessing how the user behaved
+        # cannot help; report exactly where the replay stopped instead.
+        failed = next((s for s in a.replay.get("steps", []) if not s.get("ok")), {})
+        a.why = f"replay stopped at step {failed.get('id', '?')}: {failed.get('error') or a.replay.get('error') or 'driver error'}"
+        return result
+
     # Hypotheses: how might the user's actions have differed from what the video shows?
     clicks = [s for s in plan["steps"] if s["action"] in ("click", "check", "dblclick")]
     steps_txt = "\n".join(f'{s["id"]}. {s["action"]} {s["target"].get("name")}' for s in plan["steps"])

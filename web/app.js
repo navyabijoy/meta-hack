@@ -21,7 +21,9 @@ budget()
 setInterval(budget, 10000)
 
 const m = location.pathname.match(/^\/runs\/([\w-]+)/)
+document.getElementById(location.pathname === '/dashboard' ? 'nav-dash' : 'nav-runs')?.classList.add('on')
 if (m) runPage(m[1])
+else if (location.pathname === '/dashboard') dashboardPage()
 else homePage()
 
 // ---------------------------------------------------------------- home
@@ -260,4 +262,160 @@ function colorDiff(diff) {
     if (l.startsWith('@@')) return `<span class="hunk">${e}</span>`
     return e
   }).join('\n')
+}
+
+// ---------------------------------------------------------------- dashboard
+const STAGES = [
+  { key: 'understand', label: 'Understand', cls: 's1' },
+  { key: 'ground', label: 'Ground', cls: 's2' },
+  { key: 'reproduce', label: 'Reproduce', cls: 's3' },
+  { key: 'fix', label: 'Fix', cls: 's4' },
+]
+const OUTCOMES = [
+  { key: 'fixed', label: 'Fixed and verified', cls: 's1' },
+  { key: 'reproduced', label: 'Reproduced, no verified fix', cls: 's2' },
+  { key: 'not-reproduced', label: 'Could not reproduce', cls: 's3' },
+  { key: 'error', label: 'Error', cls: 'sx' },
+]
+const median = (xs) => {
+  const v = xs.filter((x) => x != null).sort((a, b) => a - b)
+  if (!v.length) return null
+  return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2
+}
+const pct = (a, b) => (b ? Math.round((100 * a) / b) + '%' : '—')
+
+async function dashboardPage() {
+  const d = await (await fetch('/api/dashboard')).json()
+  const runs = d.runs
+  const done = runs.filter((r) => r.status && r.status !== 'running')
+  const count = (k) => done.filter((r) => r.status === k).length
+  const fixed = count('fixed'), reproduced = fixed + count('reproduced')
+  const medT = median(done.filter((r) => r.status === 'fixed').map((r) => r.seconds))
+  const medC = median(done.map((r) => r.usd))
+  const spentPct = Math.min(100, (100 * d.budget.spent) / d.budget.cap)
+
+  $('#app').innerHTML = `
+  <div class="dash">
+    <div class="dhead"><h1>Dashboard</h1><span class="why">${done.length} finished runs · ${runs.filter((r) => r.eval).length} from the eval set</span></div>
+    <section class="tiles">
+      ${tile('Runs', done.length, `${count('fixed')} fixed · ${count('not-reproduced')} declined`)}
+      ${tile('Reproduce rate', pct(reproduced, done.length), `${reproduced} of ${done.length} reproduced from video alone`)}
+      ${tile('Verified fix rate', pct(fixed, reproduced), 'of reproduced bugs; test passes and suite stays green')}
+      ${tile('Video to verified fix', medT != null ? Math.round(medT) + ' s' : '—', 'median, fixed runs')}
+      ${tile('Cost per run', medC != null ? money(medC) : '—', 'median Meta API spend')}
+      <div class="tile"><div class="tl">Meta API budget</div><div class="tv">${money(d.budget.spent)}</div>
+        <div class="meter"><span style="width:${spentPct}%"></span></div>
+        <div class="ts">of $${d.budget.cap} · per-run cap $${d.budget.run_cap}</div></div>
+    </section>
+
+    <section class="card">
+      <div class="ch"><div><h2>Where the time goes</h2><p class="sub">Seconds per stage, last ${Math.min(done.length, 12)} runs. App setup runs in parallel with Understand and is not shown.</p></div>
+      ${legend(STAGES)}</div>
+      <div id="stageChart" class="chart"></div>
+      <details class="tableview"><summary>Show as table</summary>${stageTable(done.slice(-12))}</details>
+    </section>
+
+    <div class="two">
+      <section class="card">
+        <h2>Outcomes</h2><p class="sub">Every finished run. "Could not reproduce" is a correct answer when the video shows no bug.</p>
+        ${outcomeBar(done)}
+      </section>
+      <section class="card">
+        <h2>System</h2><p class="sub">Live state of the service.</p>
+        <dl class="kv sys">
+          <dt>Workers</dt><dd>${d.workers} · ${d.queue.running || 0} running · ${d.queue.queued || 0} queued</dd>
+          <dt>GitHub bot</dt><dd>${d.bot.configured ? `<span class="okdot"></span>installed on ${esc((d.bot.repos || []).join(', ') || 'no repos')}` : 'not set up · <a href="/github/setup">set up</a>'}</dd>
+          <dt>Failed jobs</dt><dd>${(d.queue.error || 0) + (d.queue.failed || 0)}</dd>
+        </dl>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Repositories</h2>
+      <table class="tbl"><thead><tr><th>Repository</th><th class="n">Runs</th><th class="n">Fixed</th><th class="n">Declined</th><th class="n">Median time</th><th class="n">Spend</th></tr></thead>
+      <tbody>${repoRows(done)}</tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Recent runs</h2>
+      <table class="tbl"><thead><tr><th>Result</th><th>Bug</th><th>Repository</th><th>From</th><th class="n">Time</th><th class="n">Cost</th><th>PR</th></tr></thead>
+      <tbody>${runs.slice().reverse().slice(0, 15).map((r) => `<tr>
+        <td><span class="pill ${esc(r.status)}">${label(r.status)}</span></td>
+        <td><a href="/runs/${esc(r.id)}">${esc(r.title || r.id)}</a></td>
+        <td class="mono">${esc(r.source)}</td>
+        <td>${r.eval ? 'eval' : r.origin === 'github' ? 'GitHub issue' : 'upload'}</td>
+        <td class="n">${r.seconds ? Math.round(r.seconds) + ' s' : '—'}</td>
+        <td class="n">${r.usd != null ? money(r.usd) : '—'}</td>
+        <td>${r.pr_url ? `<a href="${esc(r.pr_url)}" target="_blank">#${esc(r.pr_url.split('/').pop())}</a>` : ''}</td></tr>`).join('')}</tbody></table>
+    </section>
+  </div>
+  <div id="tip" class="tip" hidden></div>`
+  stageChart($('#stageChart'), done.slice(-12))
+}
+
+function tile(l, v, s) { return `<div class="tile"><div class="tl">${l}</div><div class="tv">${v}</div><div class="ts">${s}</div></div>` }
+function legend(items) { return `<div class="legend">${items.map((i) => `<span><i class="sw ${i.cls}"></i>${i.label}</span>`).join('')}</div>` }
+
+function stageTable(rows) {
+  return `<table class="tbl"><thead><tr><th>Run</th>${STAGES.map((s) => `<th class="n">${s.label} (s)</th>`).join('')}<th class="n">Total (s)</th></tr></thead><tbody>
+  ${rows.map((r) => `<tr><td>${esc(r.title || r.id)}</td>${STAGES.map((s) => `<td class="n">${r.stages[s.key] ?? '—'}</td>`).join('')}<td class="n">${Math.round(r.seconds || 0)}</td></tr>`).join('')}</tbody></table>`
+}
+
+function stageChart(el, rows) {
+  if (!rows.length) { el.innerHTML = '<p class="why">No finished runs yet.</p>'; return }
+  const W = Math.max(el.clientWidth, 320), labelW = Math.min(240, W * 0.32), rowH = 30, barH = 16, top = 8, axisH = 28
+  const H = top + rows.length * rowH + axisH
+  const max = Math.max(...rows.map((r) => STAGES.reduce((a, s) => a + (r.stages[s.key] || 0), 0)), 1)
+  const step = max > 240 ? 60 : max > 120 ? 30 : 20
+  const xmax = Math.ceil(max / step) * step
+  const X = (v) => labelW + (v / xmax) * (W - labelW - 16)
+  let svg = `<svg width="${W}" height="${H}" role="img" aria-label="Seconds per stage for recent runs">`
+  for (let t = 0; t <= xmax; t += step) {
+    svg += `<line x1="${X(t)}" x2="${X(t)}" y1="${top}" y2="${H - axisH + 4}" class="grid"/><text x="${X(t)}" y="${H - 8}" class="axis" text-anchor="middle">${t}s</text>`
+  }
+  rows.forEach((r, i) => {
+    const y = top + i * rowH + (rowH - barH) / 2
+    const name = (r.title || r.id)
+    svg += `<text x="${labelW - 10}" y="${y + barH / 2 + 4}" class="rl" text-anchor="end">${esc(name.length > 30 ? name.slice(0, 29) + '…' : name)}</text>`
+    let acc = 0
+    const segs = STAGES.filter((s) => r.stages[s.key])
+    const total = segs.reduce((a, s) => a + r.stages[s.key], 0)
+    // Clip: square at the baseline, 4px rounded at the data end.
+    svg += `<clipPath id="c${i}"><rect x="${X(0) - 4}" y="${y}" width="${X(total) - X(0) + 4}" height="${barH}" rx="4"/></clipPath><g clip-path="url(#c${i})">`
+    segs.forEach((s) => {
+      const v = r.stages[s.key]
+      svg += `<rect class="seg ${s.cls}" x="${X(acc)}" y="${y}" width="${Math.max(X(acc + v) - X(acc) - 2, 1)}" height="${barH}"
+        data-tip="${esc(name)}|${s.label}: ${v}s of ${Math.round(total)}s"/>`
+      acc += v
+    })
+    svg += `</g><rect class="hit" x="${labelW}" y="${top + i * rowH}" width="${W - labelW}" height="${rowH}" fill="transparent"
+      data-tip="${esc(name)}|${segs.map((s) => `${s.label} ${r.stages[s.key]}s`).join(' · ')}"/>`
+  })
+  el.innerHTML = svg + '</svg>'
+  const tip = $('#tip')
+  el.querySelectorAll('[data-tip]').forEach((n) => {
+    n.addEventListener('mousemove', (e) => {
+      const [a, b] = n.dataset.tip.split('|')
+      tip.innerHTML = `<b>${a}</b><br>${b}`
+      tip.hidden = false
+      tip.style.left = e.clientX + 14 + 'px'; tip.style.top = e.clientY + 14 + 'px'
+    })
+    n.addEventListener('mouseleave', () => { tip.hidden = true })
+  })
+}
+
+function outcomeBar(rows) {
+  const n = rows.length || 1
+  const parts = OUTCOMES.map((o) => ({ ...o, v: rows.filter((r) => r.status === o.key).length })).filter((o) => o.v)
+  return `<div class="obar">${parts.map((p) => `<span class="${p.cls}" style="flex:${p.v}" title="${p.label}: ${p.v}"></span>`).join('')}</div>
+    <ul class="olist">${parts.map((p) => `<li><i class="sw ${p.cls}"></i>${p.label}<b>${p.v}</b><span class="why">${Math.round((100 * p.v) / n)}%</span></li>`).join('')}</ul>`
+}
+
+function repoRows(rows) {
+  const by = {}
+  for (const r of rows) (by[r.source] ||= []).push(r)
+  return Object.entries(by).map(([src, rs]) => `<tr><td class="mono">${esc(src)}</td><td class="n">${rs.length}</td>
+    <td class="n">${rs.filter((r) => r.status === 'fixed').length}</td><td class="n">${rs.filter((r) => r.status === 'not-reproduced').length}</td>
+    <td class="n">${Math.round(median(rs.filter((r) => r.status === 'fixed').map((r) => r.seconds)) || 0)} s</td>
+    <td class="n">${money(rs.reduce((a, r) => a + (r.usd || 0), 0))}</td></tr>`).join('')
 }
