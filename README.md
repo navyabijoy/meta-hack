@@ -24,9 +24,21 @@ Built for the Meta Global AI Developer Hackathon (Startup track, *Push the Front
 
 Matching pixels in a video to elements in a live page normally needs the exact viewport, scale and scroll. Gecko sidesteps that: SAM finds every instance of the clicked element's *kind* and the cursor tip, so Gecko knows "the 2nd x icon from the top". The live page resolves the same ordinal among elements with the same name, and cross-checks it against the planner's description ("the x on the 'Book flights' row"). When both signals agree the step is marked high confidence.
 
+## The product
+
+Gecko is built as a small SaaS on top of the pipeline: a GitHub App, a customer workspace, and a link anyone can send a bug through.
+
+- **Three roles, one flow.** A *reporter* (support, QA, a customer) records the bug and never needs GitHub. A *developer* gets a pull request with a failing test and a verified fix. An *admin* installs the app, shares the report link, sets a monthly fix limit and watches impact.
+- **Report link.** Each repo has an unguessable link (`/r/<token>`). A reporter drops a recording and a sentence; Gecko files the GitHub issue (with a GIF of the recording), answers it, and opens the PR. Links can be rotated, switched off, and are rate limited.
+- **Workspace** (`/workspace`, sign in with GitHub). Overview with reports, verified fixes, time to fix and estimated hours saved against the previous period; a bugs inbox with each run's live stage; repositories with setup status, report link and fix limits; and a "try it" upload. Each run has a proof page: the replay next to the video, SAM's masks, the failing test, and the fix.
+- **Sign in with GitHub, scoped to your repos.** People see only the repositories they can access on GitHub that have Gecko installed. Every API, evidence file and page is checked; anything else returns "not found". Internal pages (`/ops`, budget) are admin-only.
+- **GitHub bot** (`gecko-fix[bot]`). Attach a recording to an issue, or comment `/gecko` on an older one.
+
+API reference: [docs/API.md](docs/API.md). Brand and voice notes: [brand/BRAND.md](brand/BRAND.md).
+
 ## Use it on your repo
 
-1. Install the GitHub App (`/github/setup` on your Gecko server creates it; then install it on a repo).
+1. Add Gecko to GitHub: [github.com/apps/gecko-fix](https://github.com/apps/gecko-fix). Sign in at `/login` with the same account to see your workspace.
 2. Add a `.gecko.yml` to the repo, and let Playwright read its base URL from `GECKO_BASE_URL`:
 
 ```yaml
@@ -38,7 +50,7 @@ test_dir: tests/gecko
 fresh_state: [localStorage]
 ```
 
-3. Open an issue with a screen recording attached. `gecko-fix[bot]` comments "On it.", then edits the comment with the result and links the PR. Comment `/gecko` on an older issue to trigger it.
+3. Share your report link from the workspace, or open an issue with a screen recording attached. `gecko-fix[bot]` comments "On it.", then edits the comment with the result and links the PR. Comment `/gecko` on an older issue to trigger it.
 
 ## Built for production
 
@@ -49,11 +61,26 @@ fresh_state: [localStorage]
 - **Spend control.** A global cap (`GECKO_BUDGET_USD`) and a per-run cap (`GECKO_RUN_BUDGET_USD`, default $3); every call is attributed to its run in a ledger.
 - **Resilience.** Model calls retry 429s, 5xx and network errors with jittered exponential backoff and honour `Retry-After`; SAM results are cached by image and prompt.
 - **Least privilege.** The GitHub App asks only for contents, issues and pull requests on repos it is installed on, and uses short-lived installation tokens. Muse Code runs with its OS sandbox on and web tools off, and Gecko turns off Muse Code's contributor (training) mode so customer code is not used for training.
-- **Tested.** Unit tests for grounding, budgeting, test generation and agent-output parsing run in CI; the end-to-end eval below runs against real models.
+- **Access control.** Sessions are server-side (HTTP-only cookie); the workspace API, run pages and evidence files all check that the signed-in person can access the run's repository.
+- **Tested.** Unit tests for grounding, budgeting, test generation, agent-output parsing and the access rules run in CI; the end-to-end eval below runs against real models.
 
 ## Eval
 
 `python -m eval.run_eval` runs every case in `eval/cases.yml` end to end and checks each fix against a **hidden, hand-written reference test** Gecko never sees. Results: [eval/results.md](eval/results.md).
+
+Be clear about what this shows: four cases (three real bugs and one report of a bug that isn't there, which Gecko correctly declines), all on one small demo app, with recordings made by script. It shows the pipeline works end to end and that its checks are real, not that it generalises. The first full run scored 3 of 4; the miss is documented in the results file along with its fix.
+
+## Limits today
+
+- **Web apps only**, and bugs that show up on screen. No native apps, and no backend-only bugs.
+- **Proven on one app.** Phone-filmed recordings and unfamiliar codebases are untested.
+- **Repo commands run on the host.** Customer install/test commands should run in a container with no secrets; today they do not. Muse Code runs with its own OS sandbox, with contributor (training) mode off.
+- **Single server.** One machine, SQLite, two workers. A hosted, multi-tenant deployment is the next step.
+- **No billing yet.** The model is free for public repos and priced per verified fix; a monthly fix limit is enforced, payments are not built.
+
+## What's next
+
+Container isolation per run; hosted deployment; Gecko opening a "set up Gecko" pull request itself (detect the framework, write `.gecko.yml`); more eval cases from real recordings across several apps; billing per verified fix.
 
 ## Run it
 
@@ -63,6 +90,9 @@ Requirements: Python 3.12+, Node 20+, ffmpeg, Google Chrome, and the [Muse Code 
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 (cd backend/browser && npm install)
 echo 'MODEL_API_KEY=...' > .env            # Meta Model API key
+# Optional, for the GitHub app and sign-in: create the app at /github/setup, then in its settings add the
+# callback URL http://localhost:8000/auth/callback and put the client secret in .env as GITHUB_CLIENT_SECRET.
+# Without GITHUB_CLIENT_SECRET the workspace runs open, for local development.
 
 .venv/bin/uvicorn backend.api.server:app --port 8000   # open http://localhost:8000
 # or headless:
@@ -78,8 +108,15 @@ backend/
   models/      Meta Model API clients (Muse Spark, SAM 3.1, Voice Transcribe), Muse Code runner, budget guard
   pipeline/    ingest, understand, ground, replay, reproduce, fix, run (orchestrator)
   browser/     Playwright replay driver (Node)
-  api/         FastAPI server: start runs, stream events, serve the run page
-web/           Run page (plain HTML/JS)
+  api/         FastAPI server: sign-in, workspace and report-link APIs, run streaming, access checks
+  auth.py      Sign in with GitHub through the Gecko app; per-repo access
+  product.py   Report links, bugs inbox, repos, impact, monthly fix limits
+  github_app.py  The GitHub App: setup, installation tokens, the issue-watching bot
+  jobs.py      Durable run queue (SQLite)
+web/           Landing page, workspace, report page, sign-in, run proof page (plain HTML/JS)
+docs/          API reference
+brand/         Brand and voice notes
+eval/          Eval cases, hidden reference tests, results
 scripts/       Dev helpers, sample bug recorder, reference tests for the demo bugs
 ```
 
