@@ -1,5 +1,12 @@
 // Gecko run page: builds the view from the run's event stream.
 const $ = (s, el = document) => el.querySelector(s)
+// Signed out (or the session expired): go to sign-in and come back here.
+const _fetch = window.fetch.bind(window)
+window.fetch = async (...args) => {
+  const r = await _fetch(...args)
+  if (r.status === 401) location.href = '/login?next=' + encodeURIComponent(location.pathname + location.hash)
+  return r
+}
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const fileUrl = (p) => {
   if (!p) return ''

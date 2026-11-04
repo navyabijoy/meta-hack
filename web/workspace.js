@@ -30,6 +30,7 @@ const icon = (id) => `<svg class="i"><use href="#i-${id}"/></svg>`
 
 async function api(path, opts) {
   const r = await fetch(path, opts)
+  if (r.status === 401) { location.href = '/login?next=' + encodeURIComponent(location.pathname + location.hash); throw new Error('Signed out') }
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.detail || r.statusText)
   return j
@@ -67,6 +68,12 @@ function renderChrome() {
   sel.hidden = state.repos.length < 2
   const active = state.bugs.filter((b) => ['queued', 'running'].includes(b.status)).length
   $('#navCount').textContent = active ? String(active) : ''
+  const acct = $('#acct')
+  if (state.me.signed_in) {
+    acct.hidden = false
+    acct.innerHTML = `${state.me.avatar ? `<img src="${esc(state.me.avatar)}&s=64" alt="" width="30" height="30">` : ''}<span>${esc(state.me.login)}</span>`
+    acct.title = 'Signed in as ' + state.me.login
+  }
   const install = state.me.install_url || '/github/setup'
   $('#addRepo').href = install; $('#addRepo2').href = install
   const link = reportUrl()
@@ -240,6 +247,7 @@ function renderRepoCards() {
       <p class="cs">${r.configured ? 'Gecko can start this app and run its tests.' : 'Add a <code>.gecko.yml</code> so Gecko can start your app. <a class="lnk" style="margin:0" href="/welcome#setup">How</a>'}</p>
       <div class="rowline" style="display:block"><div class="k">Report link</div>
         ${url ? `<div class="linkbox"><input readonly value="${esc(url)}" aria-label="Report link for ${esc(r.repo)}"><button class="btn small copy" data-url="${esc(url)}">Copy</button></div>` : '<div class="cs" style="margin:6px 0 0">Turned off. Reports only come in through GitHub issues.</div>'}</div>
+      ${url ? `<div class="rowline"><span class="k">Link shared too widely?</span><button class="btn small rotate" data-repo="${esc(r.repo)}">New link</button></div>` : ''}
       <div class="rowline"><span class="k">Accepting reports through the link</span><button class="switch" role="switch" aria-checked="${r.report_link ? 'true' : 'false'}" aria-label="Accepting reports for ${esc(r.repo)}" data-repo="${esc(r.repo)}"></button></div>
       <div class="rowline"><span class="k">Monthly fix limit</span><span><input class="numin" type="number" min="0" step="10" value="${r.monthly_fix_limit}" data-repo="${esc(r.repo)}" aria-label="Monthly fix limit for ${esc(r.repo)}"></span></div>
       <div class="rowline" style="display:block"><div style="display:flex;justify-content:space-between"><span class="k">Fixes this month</span><span class="mono">${r.fixes_this_month} / ${r.monthly_fix_limit}</span></div><div class="meter"><span style="width:${pct}%"></span></div></div>
@@ -248,6 +256,9 @@ function renderRepoCards() {
   $$('.copy', el).forEach((b) => b.onclick = () => copy(b.dataset.url, b, 'Copy'))
   $$('.switch', el).forEach((s) => s.onclick = () => saveSetting(s.dataset.repo, { report_link: s.getAttribute('aria-checked') !== 'true' }))
   $$('.numin', el).forEach((n) => n.onchange = () => saveSetting(n.dataset.repo, { monthly_fix_limit: Number(n.value) }))
+  $$('.rotate', el).forEach((b) => b.onclick = () => {
+    if (confirm('Make a new report link? The current link will stop working for anyone who has it.')) saveSetting(b.dataset.repo, { rotate_link: true })
+  })
 }
 
 async function saveSetting(repo, body) {

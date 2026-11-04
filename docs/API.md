@@ -1,12 +1,14 @@
 # Gecko API (for the web app)
 
-Everything the landing page, workspace and report page need. JSON over HTTP from the Gecko server (`uvicorn backend.api.server:app`, default `http://localhost:8000`). No auth yet: this is a single-team deployment.
+Everything the landing page, workspace and report page need. JSON over HTTP from the Gecko server (`uvicorn backend.api.server:app`, default `http://localhost:8000`).
+
+**Auth:** sign in with GitHub at `/login` (session cookie). Workspace, run and file endpoints only cover repos the person can access on GitHub that have Gecko installed; anything else returns `404`. Signed out: `401` (pages redirect to `/login?next=...`). `/ops`, `/api/ops`, `/api/budget` are admin-only (`GECKO_ADMINS`). Sign-in is switched on by setting `GITHUB_CLIENT_SECRET`; without it the server runs open for local development. `GET /api/workspace/me` returns `{auth_enabled, signed_in, login, avatar, admin, install_url}`.
 
 ## Who uses what
 
 | Role | Surface | Endpoints |
 | --- | --- | --- |
-| Reporter (support, QA, a customer) | Report page `/r/{owner}/{repo}` | `GET/POST /api/report/{owner}/{repo}` |
+| Reporter (support, QA, a customer) | Report page `/r/{token}` | `GET/POST /api/report/{token}` |
 | Developer | Workspace: bugs inbox, bug detail | `/api/workspace/bugs`, `/api/runs/{id}`, `/api/runs/{id}/stream` |
 | Admin | Workspace: repos, impact, settings | `/api/workspace/repos`, `/api/workspace/impact`, `PATCH .../settings` |
 | Gecko team (internal) | `/ops` | `/api/ops`, `/api/budget` |
@@ -28,14 +30,16 @@ A bug (run) is one of:
 
 ## Report link
 
-### `GET /api/report/{owner}/{repo}`
-Is the link live? `404` if Gecko isn't installed on the repo, `403` if the admin turned the link off.
+Report links are unguessable tokens (e.g. `/r/5Teu7lq_KsDy`), so repo names are never exposed and links can be rotated.
+
+### `GET /api/report/{token}`
+Is the link live? `404` if unknown or rotated, `403` if the admin turned the link off.
 ```json
-{ "repo": "navyabijoy/taskly", "accepting": true }
+{ "project": "taskly", "accepting": true }
 ```
 `accepting: false` means the monthly fix limit is reached.
 
-### `POST /api/report/{owner}/{repo}` (multipart)
+### `POST /api/report/{token}` (multipart)
 | field | |
 | --- | --- |
 | `video` | MP4 / MOV / M4V / WebM, up to 300 MB |
@@ -44,9 +48,9 @@ Is the link live? `404` if Gecko isn't installed on the repo, `403` if the admin
 
 Gecko files a GitHub issue (description + a GIF of the recording), comments "On it.", and queues the run.
 ```json
-{ "id": "1105-005910-5a65", "issue_url": "https://github.com/navyabijoy/taskly/issues/2" }
+{ "issue_url": "https://github.com/navyabijoy/taskly/issues/2" }
 ```
-Errors: `400` bad input, `402` monthly limit reached, `403` link off, `404` not installed, `413` too large.
+Errors: `400` bad input, `402` monthly limit reached, `403` link off, `404` unknown link, `413` too large, `429` more than 10 reports an hour from one sender.
 
 ## Workspace
 
@@ -72,7 +76,7 @@ Newest first. `repo` optional.
 
 ### `GET /api/workspace/repos`
 ```json
-[{ "repo": "navyabijoy/taskly", "configured": true, "report_link": "/r/navyabijoy/taskly",
+[{ "repo": "navyabijoy/taskly", "configured": true, "report_link": "/r/5Teu7lq_KsDy",
    "monthly_fix_limit": 50, "fixes_this_month": 3 }]
 ```
 `configured: false` means the repo has no `.gecko.yml` yet: show setup instructions (see README "Use it on your repo"). `report_link: null` means the link is off.
@@ -86,7 +90,7 @@ Newest first. `repo` optional.
 Always show the assumption next to "hours saved".
 
 ### `PATCH /api/workspace/repos/{owner}/{repo}/settings`
-Body: `{ "report_link": true, "monthly_fix_limit": 100 }` (either field). Returns the settings.
+Body: any of `{ "report_link": true, "monthly_fix_limit": 100, "rotate_link": true }`. `rotate_link` issues a new token; the old link stops working. Returns `{ repo, report_link, monthly_fix_limit, report_link_url }`.
 
 ## Bug detail (live)
 

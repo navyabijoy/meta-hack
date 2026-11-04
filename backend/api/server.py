@@ -1,6 +1,12 @@
-"""Gecko HTTP server: start runs, stream their events, serve the run page and artifacts.
+"""Gecko HTTP server: landing page, sign-in, workspace, report links, runs, and the bot.
 
 Run: .venv/bin/uvicorn backend.api.server:app --port 8000
+
+Access:
+- Public: landing page, sign-in, report links (/r/{token}), static assets.
+- Signed-in users: the workspace, and runs, files and actions for repos they can access on GitHub.
+- Admins (GECKO_ADMINS, default the app owner): /ops, budget, GitHub App setup.
+Auth turns on once GITHUB_CLIENT_SECRET is set; until then everything is open for local development.
 """
 
 from __future__ import annotations
@@ -12,12 +18,12 @@ import shutil
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 
-from backend import github_app, jobs, product
-
+from backend import auth, github_app, jobs, product
 from backend.models import budget
 from backend.pipeline import run as pipeline
 
@@ -25,14 +31,16 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
 WEB = ROOT / "web"
 DEFAULT_SOURCE = os.environ.get("GECKO_DEFAULT_SOURCE", "navyabijoy/taskly")
-BASE_URL = os.environ.get("GECKO_BASE_URL_PUBLIC", "http://localhost:8000")
-# GitHub repos the bot answers issues on.
+BASE_URL = os.environ.get("GECKO_BASE_URL_PUBLIC", "http://localhost:8000").rstrip("/")
+# GitHub repos the bot answers issues on (empty = every installed repo).
 BOT_REPOS = set(filter(None, os.environ.get("GECKO_BOT_REPOS", "navyabijoy/taskly").split(",")))
 MAX_UPLOAD = 300 * 1024 * 1024
 VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".webm"}
 
 app = FastAPI(title="Gecko")
 
+
+# ---------------------------------------------------------------- jobs and bot
 
 def queue_run(video: Path, report: str, source: str, run_id: str, origin: str = "web",
               context: dict | None = None) -> str:
@@ -55,13 +63,109 @@ def on_done(job: dict, summary: dict) -> None:
 def _startup():
     jobs.start_workers(execute, on_done)
     github_app.start_bot(BOT_REPOS, queue_run)
+    print(f"[auth] {'on' if auth.enabled() else 'OFF (set GITHUB_CLIENT_SECRET to require sign-in)'}")
 
+
+# ---------------------------------------------------------------- access
+
+def user(request: Request) -> dict | None:
+    if not auth.enabled():
+        return auth.DEV_USER
+    return auth.session(request.cookies.get(auth.COOKIE))
+
+
+def need_user(request: Request) -> dict:
+    u = user(request)
+    if not u:
+        raise HTTPException(401, "Sign in to continue")
+    return u
+
+
+def need_admin(request: Request) -> dict:
+    u = need_user(request)
+    if not u["admin"]:
+        raise HTTPException(403, "Admins only")
+    return u
+
+
+def need_repo(u: dict, repo: str | None) -> None:
+    if not auth.can_see(u, repo):
+        raise HTTPException(404, "Not found")  # don't reveal that it exists
+
+
+def run_repo(run_id: str) -> str | None:
+    job = jobs.get(run_id)
+    if job:
+        return job["source"]
+    s = RUNS / run_id / "summary.json"
+    return json.loads(s.read_text()).get("source") if s.exists() else None
+
+
+def page_or_login(request: Request, file: str, admin: bool = False):
+    u = user(request)
+    if not u:
+        nxt = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(f"/login?next={quote(nxt)}", status_code=303)
+    if admin and not u["admin"]:
+        return RedirectResponse("/workspace", status_code=303)
+    return HTMLResponse((WEB / file).read_text())
+
+
+# ---------------------------------------------------------------- sign-in
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    return (WEB / "login.html").read_text()
+
+
+@app.get("/auth/login")
+def auth_login(next: str = "/workspace"):
+    if not auth.enabled():
+        return RedirectResponse(auth.safe_next(next), status_code=303)
+    return RedirectResponse(auth.login_url(BASE_URL, next), status_code=303)
+
+
+@app.get("/auth/callback")
+def auth_callback(code: str = "", state: str = "", error: str = ""):
+    if error or not code:
+        return RedirectResponse("/login?error=" + quote(error or "cancelled"), status_code=303)
+    try:
+        sid, nxt = auth.finish_login(code, state, BASE_URL)
+    except Exception as e:  # noqa: BLE001
+        return RedirectResponse("/login?error=" + quote(str(e)[:200]), status_code=303)
+    resp = RedirectResponse(nxt, status_code=303)
+    resp.set_cookie(auth.COOKIE, sid, max_age=auth.SESSION_TTL, httponly=True, samesite="lax",
+                    secure=BASE_URL.startswith("https://"), path="/")
+    return resp
+
+
+@app.get("/auth/logout")
+def auth_logout(request: Request):
+    auth.logout(request.cookies.get(auth.COOKIE))
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/workspace/me")
+def ws_me(request: Request):
+    u = user(request)
+    slug = github_app.env("GITHUB_APP_SLUG")
+    return {"auth_enabled": auth.enabled(), "signed_in": bool(u and u["login"]),
+            "login": u["login"] if u else None, "avatar": u["avatar"] if u else None,
+            "admin": bool(u and u["admin"]), "app_slug": slug,
+            "install_url": f"https://github.com/apps/{slug}/installations/new" if slug else None}
+
+
+# ---------------------------------------------------------------- runs
 
 @app.post("/api/runs")
-async def create_run(video: UploadFile = File(...), report: str = Form(""), source: str = Form(DEFAULT_SOURCE)):
+async def create_run(request: Request, video: UploadFile = File(...), report: str = Form(""),
+                     source: str = Form(DEFAULT_SOURCE)):
+    need_repo(need_user(request), source)
     run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     dest = await _save_upload(video, RUNS / run_id)
-    queue_run(dest, report, source, run_id)
+    queue_run(dest, report[:2000], source, run_id)
     return {"id": run_id}
 
 
@@ -84,7 +188,8 @@ async def _save_upload(video: UploadFile, folder: Path) -> Path:
 
 
 @app.get("/api/runs")
-def list_runs():
+def list_runs(request: Request):
+    need_admin(request)
     out = []
     for d in sorted(RUNS.iterdir(), reverse=True) if RUNS.exists() else []:
         s = d / "summary.json"
@@ -94,13 +199,13 @@ def list_runs():
                        | {"title": (j.get("plan") or {}).get("title")})
         elif (d / "events.jsonl").exists():
             job = jobs.get(d.name) or {}
-            st = job.get("status", "running")
-            out.append({"id": d.name, "status": "queued" if st == "queued" else "running"})
+            out.append({"id": d.name, "status": "queued" if job.get("status") == "queued" else "running"})
     return out
 
 
 @app.get("/api/runs/{run_id}")
-def get_run(run_id: str):
+def get_run(run_id: str, request: Request):
+    need_repo(need_user(request), run_repo(run_id))
     d = _run_dir(run_id)
     events = [json.loads(l) for l in (d / "events.jsonl").read_text().splitlines() if l.strip()]
     summary = json.loads((d / "summary.json").read_text()) if (d / "summary.json").exists() else None
@@ -111,6 +216,7 @@ def get_run(run_id: str):
 
 @app.get("/api/runs/{run_id}/stream")
 async def stream(run_id: str, request: Request):
+    need_repo(need_user(request), run_repo(run_id))
     d = _run_dir(run_id)
 
     async def gen():
@@ -131,45 +237,122 @@ async def stream(run_id: str, request: Request):
 
 
 @app.post("/api/runs/{run_id}/pr")
-def open_pr(run_id: str):
+def open_pr(run_id: str, request: Request):
     from backend.pipeline import deliver
 
+    need_repo(need_user(request), run_repo(run_id))
     d = _run_dir(run_id)
     summary = json.loads((d / "summary.json").read_text())
-    token = None
-    if github_app.configured():
-        token = github_app.token_for(deliver.repo_slug(Path(summary["repo"])))
+    token = github_app.token_for(deliver.repo_slug(Path(summary["repo"]))) if github_app.configured() else None
     try:
         pr = deliver.open_pr(summary, d, token=token)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(400, str(e))
     summary["pr_url"] = pr
     (d / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
     return {"pr_url": pr}
 
 
-@app.get("/github/setup", response_class=HTMLResponse)
-def github_setup():
-    return github_app.setup_page(BASE_URL)
+@app.get("/files/{path:path}")
+def files(path: str, request: Request):
+    u = need_user(request)
+    head, _, rest = path.partition("/")
+    base = {"runs": RUNS, "samples": ROOT / "samples"}.get(head)
+    if base is None or not rest:
+        raise HTTPException(404)
+    p = (base / rest).resolve()
+    if not str(p).startswith(str(base.resolve()) + os.sep) or "/.git/" in str(p) or p.suffix in (".db", ".pem") \
+            or (p.suffix == ".jsonl" and p.name != "events.jsonl"):
+        raise HTTPException(404)
+    if head == "runs":
+        need_repo(u, run_repo(p.relative_to(base.resolve()).parts[0]))
+    elif not u["admin"]:
+        raise HTTPException(404)
+    if not p.is_file():
+        raise HTTPException(404)
+    return FileResponse(p)
 
 
-@app.get("/github/callback")
-def github_callback(code: str, state: str = ""):
-    install_url = github_app.finish_setup(code, state)
-    return RedirectResponse(install_url)
+# ---------------------------------------------------------------- report links (public)
+
+@app.get("/r/{token}", response_class=HTMLResponse)
+def report_page(token: str):
+    return (WEB / "report.html").read_text()
 
 
-@app.get("/api/bot")
-def bot_status():
-    if not github_app.configured():
-        return {"configured": False, "setup": f"{BASE_URL}/github/setup"}
-    return {"configured": True, "slug": github_app.env("GITHUB_APP_SLUG"),
-            "repos": [r.full_name for r in github_app.installed_repos()]}
+def _report_repo(token: str) -> str:
+    repo = product.repo_for_token(token)
+    if not repo or not github_app.configured() or not github_app.repo_for(repo):
+        raise HTTPException(404, "This report link isn't active. Ask the team for a new one.")
+    if not product.settings(repo)["report_link"]:
+        raise HTTPException(403, "The report link for this project is turned off")
+    return repo
 
+
+@app.get("/api/report/{token}")
+def report_info(token: str):
+    repo = _report_repo(token)
+    s = product.settings(repo)
+    return {"project": repo.split("/")[1], "accepting": product.fixes_this_month(repo) < s["monthly_fix_limit"]}
+
+
+@app.post("/api/report/{token}")
+async def report_submit(token: str, request: Request, video: UploadFile = File(...),
+                        description: str = Form(...), reporter: str = Form("")):
+    repo = _report_repo(token)
+    if not description.strip():
+        raise HTTPException(400, "Describe what went wrong in a sentence")
+    try:
+        product.rate_limit(f"{token}:{request.client.host if request.client else 'unknown'}")
+    except PermissionError as e:
+        raise HTTPException(429, str(e))
+    run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
+    dest = await _save_upload(video, RUNS / run_id)
+    try:
+        r = product.submit_report(repo, dest, run_id, description[:2000], reporter[:100], queue_run)
+        return {"issue_url": r["issue_url"]}
+    except LookupError as e:
+        shutil.rmtree(RUNS / run_id, ignore_errors=True)
+        raise HTTPException(404, str(e))
+    except PermissionError as e:
+        shutil.rmtree(RUNS / run_id, ignore_errors=True)
+        raise HTTPException(402 if "fixes" in str(e) else 403, str(e))
+
+
+# ---------------------------------------------------------------- workspace API (signed in)
+
+@app.get("/api/workspace/bugs")
+def ws_bugs(request: Request, repo: str | None = None):
+    return product.bugs(repo, allowed=need_user(request)["repos"])
+
+
+@app.get("/api/workspace/repos")
+def ws_repos(request: Request):
+    return product.repos(allowed=need_user(request)["repos"])
+
+
+@app.get("/api/workspace/impact")
+def ws_impact(request: Request, repo: str | None = None, days: int = 30):
+    return product.impact(repo, max(1, min(days, 365)), allowed=need_user(request)["repos"])
+
+
+@app.patch("/api/workspace/repos/{owner}/{name}/settings")
+async def ws_settings(owner: str, name: str, request: Request):
+    repo = f"{owner}/{name}"
+    need_repo(need_user(request), repo)
+    body = await request.json()
+    s = product.update_settings(repo, body.get("report_link"), body.get("monthly_fix_limit"),
+                                bool(body.get("rotate_link")))
+    return {k: s[k] for k in ("repo", "report_link", "monthly_fix_limit")} | {
+        "report_link_url": f"/r/{s['report_token']}" if s["report_link"] else None}
+
+
+# ---------------------------------------------------------------- internal (admins)
 
 @app.get("/api/ops")
-def ops():
-    """Aggregates for the team dashboard, computed from run folders, the job table and the ledger."""
+def ops(request: Request):
+    """Aggregates for the internal ops page: runs, stage timings, queue, bot, Meta API budget."""
+    need_admin(request)
     runs = []
     for d in sorted(RUNS.iterdir()) if RUNS.exists() else []:
         sf = d / "summary.json"
@@ -209,114 +392,67 @@ def ops():
     }
 
 
-# ---------------------------------------------------------------- report link (reporters)
-
-@app.get("/r/{owner}/{name}", response_class=HTMLResponse)
-def report_page(owner: str, name: str):
-    return (WEB / "report.html").read_text()
-
-
-@app.get("/api/report/{owner}/{name}")
-def report_info(owner: str, name: str):
-    full = f"{owner}/{name}"
-    if not github_app.configured() or not github_app.repo_for(full):
-        raise HTTPException(404, "Gecko is not set up for this project")
-    if not product.settings(full)["report_link"]:
-        raise HTTPException(403, "The report link for this project is turned off")
-    return {"repo": full, "accepting": product.fixes_this_month(full) < product.settings(full)["monthly_fix_limit"]}
-
-
-@app.post("/api/report/{owner}/{name}")
-async def report_submit(owner: str, name: str, video: UploadFile = File(...), description: str = Form(...),
-                        reporter: str = Form("")):
-    full = f"{owner}/{name}"
-    if not description.strip():
-        raise HTTPException(400, "Describe what went wrong in a sentence")
-    run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
-    dest = await _save_upload(video, RUNS / run_id)
-    try:
-        return product.submit_report(full, dest, run_id, description[:2000], reporter[:100], queue_run)
-    except LookupError as e:
-        shutil.rmtree(RUNS / run_id, ignore_errors=True)
-        raise HTTPException(404, str(e))
-    except PermissionError as e:
-        shutil.rmtree(RUNS / run_id, ignore_errors=True)
-        raise HTTPException(402 if "fixes" in str(e) else 403, str(e))
-
-
-# ---------------------------------------------------------------- workspace (developers, admins)
-
-@app.get("/api/workspace/bugs")
-def ws_bugs(repo: str | None = None):
-    return product.bugs(repo)
-
-
-@app.get("/api/workspace/repos")
-def ws_repos():
-    return product.repos()
-
-
-@app.get("/api/workspace/impact")
-def ws_impact(repo: str | None = None, days: int = 30):
-    return product.impact(repo, days)
-
-
-@app.patch("/api/workspace/repos/{owner}/{name}/settings")
-async def ws_settings(owner: str, name: str, request: Request):
-    body = await request.json()
-    return product.update_settings(f"{owner}/{name}", body.get("report_link"), body.get("monthly_fix_limit"))
-
-
 @app.get("/api/budget")
-def get_budget():
+def get_budget(request: Request):
+    need_admin(request)
     return {"spent": round(budget.spent(), 4), "cap": budget.HARD_CAP_USD}
 
 
-@app.get("/files/{path:path}")
-def files(path: str):
-    p = (ROOT / path).resolve()
-    allowed = [RUNS.resolve(), (ROOT / "samples").resolve()]
-    if not any(str(p).startswith(str(a) + os.sep) for a in allowed) or "/.git/" in str(p) or p.suffix in (".db", ".pem"):
-        raise HTTPException(404)
-    if not p.is_file():
-        raise HTTPException(404)
-    return FileResponse(p)
+@app.get("/api/bot")
+def bot_status(request: Request):
+    need_admin(request)
+    if not github_app.configured():
+        return {"configured": False, "setup": f"{BASE_URL}/github/setup"}
+    return {"configured": True, "slug": github_app.env("GITHUB_APP_SLUG"),
+            "repos": [r.full_name for r in github_app.installed_repos()]}
 
 
-@app.get("/workspace", response_class=HTMLResponse)
-def workspace_page():
-    return (WEB / "workspace.html").read_text()
+@app.get("/github/setup", response_class=HTMLResponse)
+def github_setup(request: Request):
+    if github_app.configured():
+        need_admin(request)
+    return github_app.setup_page(BASE_URL)
 
 
-@app.get("/api/workspace/me")
-def ws_me():
-    slug = github_app.env("GITHUB_APP_SLUG")
-    return {"login": None, "app_slug": slug,
-            "install_url": f"https://github.com/apps/{slug}/installations/new" if slug else None}
+@app.get("/github/callback")
+def github_callback(code: str, state: str = ""):
+    return RedirectResponse(github_app.finish_setup(code, state))
 
 
+# ---------------------------------------------------------------- pages
+
+@app.get("/", response_class=HTMLResponse)
 @app.get("/welcome", response_class=HTMLResponse)
 def landing():
     return (WEB / "landing.html").read_text()
 
 
-@app.get("/", response_class=HTMLResponse)
-@app.get("/ops", response_class=HTMLResponse)
+@app.get("/workspace", response_class=HTMLResponse)
+def workspace_page(request: Request):
+    return page_or_login(request, "workspace.html")
+
+
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
-def page(run_id: str | None = None):
-    return (WEB / "index.html").read_text()
+def run_page(run_id: str, request: Request):
+    return page_or_login(request, "index.html")
+
+
+@app.get("/ops", response_class=HTMLResponse)
+@app.get("/ops/runs", response_class=HTMLResponse)
+def ops_page(request: Request):
+    return page_or_login(request, "index.html", admin=True)
 
 
 @app.get("/static/{name:path}")
 def static(name: str):
     p = (WEB / name).resolve()
-    if not str(p).startswith(str(WEB.resolve())) or not p.is_file():
+    if not str(p).startswith(str(WEB.resolve()) + os.sep) or not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)
 
 
 def _run_dir(run_id: str) -> Path:
     d = (RUNS / run_id).resolve()
-    if not str(d).startswith(str(RUNS.resolve())) or not d.is_dir():
+    if not str(d).startswith(str(RUNS.resolve()) + os.sep) or not d.is_dir():
         raise HTTPException(404, "no such run")
     return d

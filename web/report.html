@@ -44,19 +44,18 @@
   <p class="foot">Powered by Gecko · your report becomes a tracked issue for the team</p>
 </main>
 <script>
-const parts = location.pathname.split('/').filter(Boolean) // ['r', owner, name]
-const repo = parts.slice(1, 3).join('/')
+const token = location.pathname.split('/').filter(Boolean)[1] // /r/{token}
 const $ = (s) => document.querySelector(s)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
-fetch('/api/report/' + repo).then(async (r) => {
+fetch('/api/report/' + encodeURIComponent(token)).then(async (r) => {
   if (!r.ok) {
     const j = await r.json().catch(() => ({}))
     $('#rp').innerHTML = `<div class="card done"><h2>This link isn't active</h2><p class="lead">${esc(j.detail || 'Ask the team for a new link.')}</p></div>`
     return
   }
   const j = await r.json()
-  $('#h').textContent = 'Report a bug in ' + j.repo.split('/')[1]
+  $('#h').textContent = 'Report a bug in ' + j.project
   if (!j.accepting) $('#err').textContent = 'This project has reached its monthly limit. Your report will still be filed for the team.'
 })
 
@@ -82,7 +81,7 @@ $('#form').onsubmit = async (e) => {
   fd.append('video', file)
   fd.append('description', $('#desc').value)
   fd.append('reporter', $('#who').value)
-  const r = await fetch('/api/report/' + repo, { method: 'POST', body: fd })
+  const r = await fetch('/api/report/' + encodeURIComponent(token), { method: 'POST', body: fd })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) {
     $('#err').textContent = j.detail || 'Something went wrong. Try again.'

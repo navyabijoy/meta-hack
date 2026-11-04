@@ -13,6 +13,7 @@ import base64
 import json
 import os
 import re
+import secrets
 import statistics
 import subprocess
 import time
@@ -36,23 +37,58 @@ def _db():
     c.execute("""CREATE TABLE IF NOT EXISTS repo_settings (
         repo TEXT PRIMARY KEY, report_link INTEGER DEFAULT 1, monthly_fix_limit INTEGER DEFAULT 50,
         updated REAL)""")
+    cols = {r[1] for r in c.execute("PRAGMA table_info(repo_settings)").fetchall()}
+    if "report_token" not in cols:
+        c.execute("ALTER TABLE repo_settings ADD COLUMN report_token TEXT")
     return c
 
 
 def settings(repo: str) -> dict:
     r = _db().execute("SELECT * FROM repo_settings WHERE repo=?", (repo,)).fetchone()
-    return dict(r) if r else {"repo": repo, "report_link": 1, "monthly_fix_limit": 50}
+    if r and r["report_token"]:
+        return dict(r)
+    # First use: create the row with an unguessable report-link token.
+    cur = dict(r) if r else {"repo": repo, "report_link": 1, "monthly_fix_limit": 50}
+    cur["report_token"] = secrets.token_urlsafe(9)
+    _save(cur)
+    return cur
 
 
-def update_settings(repo: str, report_link: bool | None = None, monthly_fix_limit: int | None = None) -> dict:
+def _save(cur: dict) -> None:
+    _db().execute("INSERT OR REPLACE INTO repo_settings (repo, report_link, monthly_fix_limit, updated, report_token) VALUES (?,?,?,?,?)",
+                  (cur["repo"], cur["report_link"], cur["monthly_fix_limit"], time.time(), cur["report_token"]))
+
+
+def update_settings(repo: str, report_link: bool | None = None, monthly_fix_limit: int | None = None,
+                    rotate_link: bool = False) -> dict:
     cur = settings(repo)
     if report_link is not None:
         cur["report_link"] = int(bool(report_link))
     if monthly_fix_limit is not None:
-        cur["monthly_fix_limit"] = max(0, int(monthly_fix_limit))
-    _db().execute("INSERT OR REPLACE INTO repo_settings (repo, report_link, monthly_fix_limit, updated) VALUES (?,?,?,?)",
-                  (repo, cur["report_link"], cur["monthly_fix_limit"], time.time()))
+        cur["monthly_fix_limit"] = max(0, min(int(monthly_fix_limit), 100000))
+    if rotate_link:
+        cur["report_token"] = secrets.token_urlsafe(9)  # old links stop working
+    _save(cur)
     return settings(repo)
+
+
+def repo_for_token(token: str) -> str | None:
+    r = _db().execute("SELECT repo FROM repo_settings WHERE report_token=?", (token,)).fetchone()
+    return r["repo"] if r else None
+
+
+_recent: dict[str, list[float]] = {}
+REPORTS_PER_HOUR = int(os.environ.get("GECKO_REPORTS_PER_HOUR", "10"))
+
+
+def rate_limit(key: str) -> None:
+    """At most REPORTS_PER_HOUR reports per sender per link."""
+    now = time.time()
+    hits = [t for t in _recent.get(key, []) if now - t < 3600]
+    if len(hits) >= REPORTS_PER_HOUR:
+        raise PermissionError("Too many reports from you in the last hour. Try again later.")
+    hits.append(now)
+    _recent[key] = hits
 
 
 def fixes_this_month(repo: str) -> int:
@@ -158,13 +194,14 @@ def pr_state(pr_url: str | None) -> str | None:
     return state
 
 
-def bugs(repo: str | None = None, include_eval: bool = False) -> list[dict]:
+def bugs(repo: str | None = None, include_eval: bool = False, allowed: set[str] | None = None) -> list[dict]:
+    """allowed: the repos the viewer may see (None = all)."""
     rows = jobs.db().execute("SELECT * FROM jobs ORDER BY created DESC").fetchall()
     known = {r["id"] for r in rows}
     out = []
     for r in rows:
         r = dict(r)
-        if repo and r["source"] != repo:
+        if (repo and r["source"] != repo) or (allowed is not None and r["source"] not in allowed):
             continue
         out.append(_bug(r["id"], r))
     # Runs made outside the queue (CLI, eval) only exist as folders.
@@ -173,7 +210,7 @@ def bugs(repo: str | None = None, include_eval: bool = False) -> list[dict]:
         if rid in known or (rid.startswith("eval-") and not include_eval):
             continue
         b = _bug(rid, None)
-        if not repo or b["repo"] == repo:
+        if (not repo or b["repo"] == repo) and (allowed is None or b["repo"] in allowed):
             out.append(b)
     return out
 
@@ -220,9 +257,11 @@ def _bug(run_id: str, job: dict | None) -> dict:
     }
 
 
-def repos() -> list[dict]:
+def repos(allowed: set[str] | None = None) -> list[dict]:
     out = []
     for r in github_app.installed_repos() if github_app.configured() else []:
+        if allowed is not None and r.full_name not in allowed:
+            continue
         configured = None
         try:
             r.get("/contents/.gecko.yml")
@@ -236,15 +275,15 @@ def repos() -> list[dict]:
         st = settings(r.full_name)
         out.append({
             "repo": r.full_name, "configured": configured,
-            "report_link": f"/r/{r.full_name}" if st["report_link"] else None,
+            "report_link": f"/r/{st['report_token']}" if st["report_link"] else None,
             "monthly_fix_limit": st["monthly_fix_limit"], "fixes_this_month": fixes_this_month(r.full_name),
         })
     return out
 
 
-def impact(repo: str | None = None, days: int = 30) -> dict:
+def impact(repo: str | None = None, days: int = 30, allowed: set[str] | None = None) -> dict:
     now = time.time()
-    all_bugs = [b for b in bugs(repo) if b["origin"] != "eval"]
+    all_bugs = [b for b in bugs(repo, allowed=allowed) if b["origin"] != "eval"]
     cur = _period(all_bugs, now - days * 86400, now)
     prev = _period(all_bugs, now - 2 * days * 86400, now - days * 86400)
     return {"days": days, **cur, "previous": prev,
