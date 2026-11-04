@@ -105,19 +105,31 @@ class Repo:
         r.raise_for_status()
         return r.json()
 
+    def put(self, path: str, body: dict):
+        r = httpx.put(f"{API}/repos/{self.full_name}{path}", headers=self._h(), json=body, timeout=60)
+        r.raise_for_status()
+        return r.json()
+
     def patch(self, path: str, body: dict):
         r = httpx.patch(f"{API}/repos/{self.full_name}{path}", headers=self._h(), json=body)
         r.raise_for_status()
         return r.json()
 
 
-def installed_repos() -> list[Repo]:
+_repos_cache: tuple[float, list] = (0.0, [])
+
+
+def installed_repos(max_age: float = 60) -> list[Repo]:
+    global _repos_cache
+    if time.time() - _repos_cache[0] < max_age:
+        return _repos_cache[1]
     out = []
     for inst in app_get("/app/installations"):
         tok = installation_token(inst["id"])
         r = httpx.get(f"{API}/installation/repositories", headers={"Authorization": f"Bearer {tok}"})
         r.raise_for_status()
         out += [Repo(x["full_name"], inst["id"]) for x in r.json()["repositories"]]
+    _repos_cache = (time.time(), out)
     return out
 
 
@@ -221,6 +233,13 @@ def handle_issue(repo: Repo, issue: dict, queue_run) -> None:
     if not video:
         repo.post(f"/issues/{n}/comments", {"body": "I need a screen recording to catch this. Attach an MP4 or MOV and comment `/gecko`."})
         return
+    from backend import product
+
+    try:
+        product.check_quota(repo.full_name)
+    except PermissionError as e:
+        repo.post(f"/issues/{n}/comments", {"body": f"**Not this time.** {e}. An admin can raise the limit in Gecko's settings."})
+        return
     comment = repo.post(f"/issues/{n}/comments", {"body": (
         "**On it.** Watching the recording, replaying it in a real browser, and writing a test "
         "that fails the same way. I'll update this comment.")})
@@ -230,7 +249,8 @@ def handle_issue(repo: Repo, issue: dict, queue_run) -> None:
     path = download(video, folder / "input.mp4", repo.token)
     report = f"{issue['title']}\n\n{VIDEO_RE.sub('', issue.get('body') or '').strip()}"[:1500]
     queue_run(path, report, repo.full_name, run_id, "github",
-              {"repo": repo.full_name, "issue": n, "comment_id": comment["id"]})
+              {"repo": repo.full_name, "issue": n, "comment_id": comment["id"],
+               "reporter": (issue.get("user") or {}).get("login"), "issue_url": issue.get("html_url")})
 
 
 def report(ctx: dict, summary: dict, run_dir: Path) -> None:

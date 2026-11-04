@@ -21,9 +21,9 @@ budget()
 setInterval(budget, 10000)
 
 const m = location.pathname.match(/^\/runs\/([\w-]+)/)
-document.getElementById(location.pathname === '/dashboard' ? 'nav-dash' : 'nav-runs')?.classList.add('on')
+document.getElementById(location.pathname === '/ops' ? 'nav-dash' : 'nav-runs')?.classList.add('on')
 if (m) runPage(m[1])
-else if (location.pathname === '/dashboard') dashboardPage()
+else if (location.pathname === '/ops') dashboardPage()
 else homePage()
 
 // ---------------------------------------------------------------- home
@@ -292,7 +292,7 @@ async function dashboardPage() {
 }
 
 async function renderDashboard() {
-  const d = await (await fetch('/api/dashboard')).json()
+  const d = await (await fetch('/api/ops')).json()
   const runs = d.runs.filter((r) => dashFilter === 'all' || (dashFilter === 'eval' ? r.eval : !r.eval))
   const done = runs.filter((r) => r.status && r.status !== 'running')
   const count = (k) => done.filter((r) => r.status === k).length
@@ -303,7 +303,7 @@ async function renderDashboard() {
 
   $('#app').innerHTML = `
   <div class="dash">
-    <div class="dhead"><h1>Dashboard</h1><span class="why">${done.length} finished runs · updates live</span>
+    <div class="dhead"><h1>Ops</h1><span class="why">${done.length} finished runs · updates live</span>
       <div class="seg" role="group" aria-label="Which runs">${[['all', 'All runs'], ['real', 'Real runs'], ['eval', 'Eval set']].map(([k, l]) =>
         `<button data-f="${k}" aria-pressed="${dashFilter === k}" class="${dashFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <section class="tiles">

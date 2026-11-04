@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
-from backend import github_app, jobs
+from backend import github_app, jobs, product
 
 from backend.models import budget
 from backend.pipeline import run as pipeline
@@ -47,7 +47,7 @@ def execute(job: dict) -> dict:
 
 
 def on_done(job: dict, summary: dict) -> None:
-    if job["origin"] == "github":
+    if job["origin"] in ("github", "report"):
         github_app.report(json.loads(job["context"]), summary, RUNS / job["id"])
 
 
@@ -59,11 +59,16 @@ def _startup():
 
 @app.post("/api/runs")
 async def create_run(video: UploadFile = File(...), report: str = Form(""), source: str = Form(DEFAULT_SOURCE)):
+    run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
+    dest = await _save_upload(video, RUNS / run_id)
+    queue_run(dest, report, source, run_id)
+    return {"id": run_id}
+
+
+async def _save_upload(video: UploadFile, folder: Path) -> Path:
     ext = Path(video.filename or "v.mp4").suffix.lower()
     if ext not in VIDEO_TYPES:
         raise HTTPException(400, f"unsupported video type {ext}; use MP4 or MOV")
-    run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
-    folder = RUNS / run_id
     folder.mkdir(parents=True)
     dest = folder / ("input" + ext)
     size = 0
@@ -75,8 +80,7 @@ async def create_run(video: UploadFile = File(...), report: str = Form(""), sour
                 shutil.rmtree(folder)
                 raise HTTPException(413, "video is larger than 300 MB")
             f.write(chunk)
-    queue_run(dest, report, source, run_id)
-    return {"id": run_id}
+    return dest
 
 
 @app.get("/api/runs")
@@ -163,8 +167,8 @@ def bot_status():
             "repos": [r.full_name for r in github_app.installed_repos()]}
 
 
-@app.get("/api/dashboard")
-def dashboard():
+@app.get("/api/ops")
+def ops():
     """Aggregates for the team dashboard, computed from run folders, the job table and the ledger."""
     runs = []
     for d in sorted(RUNS.iterdir()) if RUNS.exists() else []:
@@ -205,6 +209,64 @@ def dashboard():
     }
 
 
+# ---------------------------------------------------------------- report link (reporters)
+
+@app.get("/r/{owner}/{name}", response_class=HTMLResponse)
+def report_page(owner: str, name: str):
+    return (WEB / "report.html").read_text()
+
+
+@app.get("/api/report/{owner}/{name}")
+def report_info(owner: str, name: str):
+    full = f"{owner}/{name}"
+    if not github_app.configured() or not github_app.repo_for(full):
+        raise HTTPException(404, "Gecko is not set up for this project")
+    if not product.settings(full)["report_link"]:
+        raise HTTPException(403, "The report link for this project is turned off")
+    return {"repo": full, "accepting": product.fixes_this_month(full) < product.settings(full)["monthly_fix_limit"]}
+
+
+@app.post("/api/report/{owner}/{name}")
+async def report_submit(owner: str, name: str, video: UploadFile = File(...), description: str = Form(...),
+                        reporter: str = Form("")):
+    full = f"{owner}/{name}"
+    if not description.strip():
+        raise HTTPException(400, "Describe what went wrong in a sentence")
+    run_id = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
+    dest = await _save_upload(video, RUNS / run_id)
+    try:
+        return product.submit_report(full, dest, run_id, description[:2000], reporter[:100], queue_run)
+    except LookupError as e:
+        shutil.rmtree(RUNS / run_id, ignore_errors=True)
+        raise HTTPException(404, str(e))
+    except PermissionError as e:
+        shutil.rmtree(RUNS / run_id, ignore_errors=True)
+        raise HTTPException(402 if "fixes" in str(e) else 403, str(e))
+
+
+# ---------------------------------------------------------------- workspace (developers, admins)
+
+@app.get("/api/workspace/bugs")
+def ws_bugs(repo: str | None = None):
+    return product.bugs(repo)
+
+
+@app.get("/api/workspace/repos")
+def ws_repos():
+    return product.repos()
+
+
+@app.get("/api/workspace/impact")
+def ws_impact(repo: str | None = None, days: int = 30):
+    return product.impact(repo, days)
+
+
+@app.patch("/api/workspace/repos/{owner}/{name}/settings")
+async def ws_settings(owner: str, name: str, request: Request):
+    body = await request.json()
+    return product.update_settings(f"{owner}/{name}", body.get("report_link"), body.get("monthly_fix_limit"))
+
+
 @app.get("/api/budget")
 def get_budget():
     return {"spent": round(budget.spent(), 4), "cap": budget.HARD_CAP_USD}
@@ -222,7 +284,7 @@ def files(path: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/ops", response_class=HTMLResponse)
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
 def page(run_id: str | None = None):
     return (WEB / "index.html").read_text()
