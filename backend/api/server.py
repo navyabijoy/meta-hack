@@ -185,7 +185,7 @@ def page(run_id: str | None = None):
     return (WEB / "index.html").read_text()
 
 
-@app.get("/static/{name}")
+@app.get("/static/{name:path}")
 def static(name: str):
     p = (WEB / name).resolve()
     if not str(p).startswith(str(WEB.resolve())) or not p.is_file():
