@@ -14,14 +14,14 @@
  {
   "id": "wrong-delete",
   "expect": "fixed",
-  "status": "not-reproduced",
-  "seconds": 140.7,
-  "usd": 0.0818,
-  "attempts": 3,
-  "fix_rounds": null,
-  "run": "eval-1105-003535-wrong-delete",
-  "reference": null,
-  "passed": false
+  "status": "fixed",
+  "seconds": 138.9,
+  "usd": 0.1153,
+  "attempts": 1,
+  "fix_rounds": 1,
+  "run": "eval-1105-004334-wrong-delete",
+  "reference": "pass",
+  "passed": true
  },
  {
   "id": "counter",
