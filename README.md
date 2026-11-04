@@ -38,7 +38,7 @@ test_dir: tests/gecko
 fresh_state: [localStorage]
 ```
 
-3. Open an issue with a screen recording attached. `gecko-bot` comments "Reproducing…", then edits the comment with the result and links the PR. Comment `/gecko` on an older issue to trigger it.
+3. Open an issue with a screen recording attached. `gecko-fix[bot]` comments "On it.", then edits the comment with the result and links the PR. Comment `/gecko` on an older issue to trigger it.
 
 ## Built for production
 

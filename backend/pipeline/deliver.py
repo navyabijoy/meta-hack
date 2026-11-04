@@ -91,8 +91,9 @@ def push_evidence(repo: Path, run_id: str, src: Path, origin: str = "origin") ->
         try:
             shutil.copytree(src, wt / run_id, dirs_exist_ok=True)
             git(wt, "add", "-A")
-            git(wt, "-c", "user.name=gecko[bot]", "-c", "user.email=gecko-bot@users.noreply.github.com",
-                "commit", "-qm", f"evidence for run {run_id}")
+            from backend.github_app import git_author
+
+            git(wt, *git_author(), "commit", "-qm", f"evidence for run {run_id}")
             git(wt, "push", "-q", origin, f"HEAD:refs/heads/{EVIDENCE_BRANCH}")
         finally:
             git(repo, "worktree", "remove", "--force", str(wt), check=False)

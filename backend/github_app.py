@@ -1,4 +1,4 @@
-"""gecko[bot]: a GitHub App that turns issues with a bug video into verified fix PRs.
+"""The Gecko GitHub App (gecko-fix[bot]): that turns issues with a bug video into verified fix PRs.
 
 Setup (two clicks): open http://localhost:8000/github/setup, click "Create GitHub App",
 then install it on the target repo. Credentials land in .env and github-app.pem.
@@ -215,6 +215,29 @@ def download(url: str, dest: Path, token: str) -> Path:
             for chunk in r.iter_bytes():
                 f.write(chunk)
     return dest
+
+
+_identity: tuple[str, str] | None = None
+
+
+def bot_identity() -> tuple[str, str]:
+    """(name, email) GitHub attributes to the app's bot account, e.g. gecko-fix[bot]."""
+    global _identity
+    if _identity:
+        return _identity
+    slug = env("GITHUB_APP_SLUG") or "gecko"
+    name = f"{slug}[bot]"
+    try:
+        uid = httpx.get(f"{API}/users/{name}", timeout=10).json()["id"]
+        _identity = (name, f"{uid}+{name}@users.noreply.github.com")
+    except Exception:  # noqa: BLE001
+        _identity = (name, f"{slug}-bot@users.noreply.github.com")
+    return _identity
+
+
+def git_author() -> list[str]:
+    name, email = bot_identity()
+    return ["-c", f"user.name={name}", "-c", f"user.email={email}"]
 
 
 def token_for(full_name: str) -> str | None:

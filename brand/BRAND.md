@@ -7,7 +7,7 @@ Working notes for anyone building Gecko's landing page, dashboard or bot copy. V
 **Gecko catches bugs.** Geckos eat bugs, cling to any surface, and stay still until the moment they strike. That is the product: it sits quietly on your repo, and when someone drops a video of a bug, it catches it and brings back the fix.
 
 - Product: **Gecko**
-- Bot: **gecko[bot]** on GitHub
+- Bot: **gecko-fix[bot]** on GitHub (https://github.com/apps/gecko-fix)
 - Company line: *Gecko — send a video of a bug, get back a pull request that proves it and fixes it.*
 
 Name collisions to know about: Mozilla's Gecko browser engine, CoinGecko, Gecko Robotics. Pick a distinctive domain and social handle (e.g. "trygecko", "geckohq", "gecko.fix") rather than plain "gecko".
