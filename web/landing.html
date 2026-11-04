@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gecko: send a video, get a fix</title>
+<meta name="description" content="Gecko watches a screen recording of a bug, reproduces it in a real browser, and opens a pull request that proves it and fixes it.">
+<link rel="icon" type="image/png" href="/static/brand/logo-64.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f4ef;
+  --bg-2: #efece5;
+  --ink: #1c1917;
+  --muted: #78716c;
+  --faint: #a8a29e;
+  --line: #e4e0d8;
+  --card: #1c1917;
+  --card-ink: #fafaf9;
+  --glass: rgba(250, 249, 246, .9);
+  --glass-ink: #1c1917;
+  --red: #ef4444;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --sky-a: #f6e7c1; --sky-b: #f2b98a; --far: #d9a38f; --mid: #b97f86; --near: #6f5560; --ground: #3b2f3a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0d0c; --bg-2: #171412; --ink: #f5f3ee; --muted: #a8a29e; --faint: #78716c; --line: #272320;
+    --card: #fafaf9; --card-ink: #1c1917;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f0d0c; --bg-2: #171412; --ink: #f5f3ee; --muted: #a8a29e; --faint: #78716c; --line: #272320;
+  --card: #fafaf9; --card-ink: #1c1917;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.serif { font-family: Fraunces, Georgia, serif; font-optical-sizing: auto; font-weight: 400; letter-spacing: -0.02em; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 max(20px, 4vw); }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 500 11px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent); }
+h2.big { font-size: clamp(34px, 5.4vw, 60px); line-height: 1.06; margin: 16px 0 14px; }
+.lead { color: var(--muted); font-size: 17px; max-width: 560px; text-wrap: pretty; }
+
+/* nav */
+.nav { position: fixed; inset: 0 0 auto 0; z-index: 30; display: flex; align-items: center; gap: 28px; padding: 14px max(16px, 3vw);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.nav .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
+.nav .links { display: flex; gap: 26px; margin-left: 40px; font-size: 14px; color: var(--muted); }
+.nav .links a { transition: color .2s; }
+.nav .links a:hover { color: var(--ink); }
+.nav .sp { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 500; transition: transform .2s, opacity .2s; border: 0; cursor: pointer; }
+.pill:hover { transform: translateY(-1px); opacity: .9; }
+.pill.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.pill.ghost:hover { border-color: var(--faint); }
+
+/* hero */
+.hero { padding: 150px max(20px, 4vw) 56px; text-align: center; max-width: 980px; margin: 0 auto; }
+.badge { display: inline-flex; align-items: center; gap: 9px; padding: 6px 14px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 6%, transparent); font-size: 12px; letter-spacing: .02em; color: var(--muted); }
+.badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent); }
+h1 { font-size: clamp(46px, 8vw, 96px); line-height: 1.02; margin: 26px 0 22px; }
+h1 em { font-style: italic; color: var(--red); }
+/* line mask rise */
+.line { display: block; overflow: hidden; padding-bottom: .08em; }
+.line > span { display: inline-block; transform: translateY(105%); animation: rise 1.1s cubic-bezier(.2,.75,.15,1) forwards; }
+.line:nth-child(2) > span { animation-delay: .12s; }
+@keyframes rise { to { transform: none; } }
+.fade-up { opacity: 0; transform: translateY(14px); animation: fadeup .9s .45s cubic-bezier(.2,.7,.2,1) forwards; }
+.fade-up.d2 { animation-delay: .6s; } .fade-up.d0 { animation-delay: .05s; }
+@keyframes fadeup { to { opacity: 1; transform: none; } }
+.sub { text-wrap: balance; max-width: 560px; margin: 0 auto 30px; color: var(--muted); font-size: clamp(16px, 2vw, 19px); }
+.cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/* window (landscape) */
+.win { position: relative; overflow: hidden; isolation: isolate; background: linear-gradient(180deg, var(--sky-a), var(--sky-b)); transition: background 1.2s; }
+.win.framed { margin: 0 max(14px, 2vw); border-radius: 28px; }
+.win svg.land { position: absolute; left: -4%; width: 108%; bottom: -70px; height: calc(70% + 70px); z-index: 0; will-change: transform; }
+.win svg.land path { transition: fill 1.2s; }
+.sun { position: absolute; width: 150px; height: 150px; border-radius: 50%; left: 62%; top: 18%; z-index: 0; background: radial-gradient(circle, #fff7d6 0%, rgba(255,247,214,0) 70%); opacity: .85; will-change: transform; transition: all 1.2s; }
+.hour-dawn  { --sky-a: #f4ead2; --sky-b: #efb98e; --far: #dca08f; --mid: #b97f86; --near: #6f5560; --ground: #3b2f3a; }
+.hour-noon  { --sky-a: #e3eff0; --sky-b: #bcd7d1; --far: #9fc4b5; --mid: #6f9f8f; --near: #3f6b62; --ground: #26453f; }
+.hour-dusk  { --sky-a: #6a5c8f; --sky-b: #e59a7b; --far: #b97a8c; --mid: #8a5f7f; --near: #4a3a5e; --ground: #2a2140; }
+.hour-night { --sky-a: #121a33; --sky-b: #3d3158; --far: #4a3e66; --mid: #342c52; --near: #211d3a; --ground: #131127; }
+.hour-night .sun { background: radial-gradient(circle, #f3f0ff 0%, rgba(243,240,255,0) 68%); width: 90px; height: 90px; left: 22%; top: 16%; }
+
+/* hero window: clip opens to full bleed on scroll */
+.hero-win { height: min(84vh, 780px); min-height: 540px; clip-path: inset(0 var(--ix, 2vw) round var(--ir, 28px)); }
+.live { position: absolute; top: 18px; right: max(18px, calc(var(--ix, 2vw) + 18px)); z-index: 3; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(28,25,23,.55); color: #fff; font-size: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: blink 1.6s infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+
+/* conversation in hero */
+.thread { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; padding: 20px 20px 120px; }
+.msg { width: min(460px, 100%); border-radius: 16px; padding: 14px 16px; box-shadow: 0 24px 60px -22px rgba(0,0,0,.45);
+  opacity: 0; transform: translateY(16px) scale(.94); transition: opacity .5s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.75,.15,1); }
+.msg.in { opacity: 1; transform: none; }
+.msg.user { background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); width: min(400px, 92%); align-self: center; transform-origin: left center; margin-left: -60px; }
+.msg.bot { background: var(--card); color: var(--card-ink); margin-left: 60px; }
+.msg .who { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: .6; margin-bottom: 6px; }
+.msg .who i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.msg .who .clip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border-radius: 6px; background: rgba(0,0,0,.08); font-family: "JetBrains Mono", monospace; font-size: 11px; }
+.msg p { margin: 0; font-size: 15px; line-height: 1.5; transition: opacity .3s; }
+.msg code { font-size: 12.5px; opacity: .8; }
+.msg .res { display: flex; gap: 14px; flex-wrap: wrap; font: 12px "JetBrains Mono", monospace; overflow: hidden; max-height: 0; opacity: 0; transition: max-height .5s, opacity .5s .1s, margin .5s, padding .5s; }
+.msg .res.show { max-height: 80px; opacity: 1; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--card-ink) 16%, transparent); }
+.typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+.typing b { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .4; animation: dot 1s infinite; }
+.typing b:nth-child(2) { animation-delay: .15s; } .typing b:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 50% { opacity: 1; transform: translateY(-2px); } }
+.c-ok { color: #4ade80; } .c-no { color: #fbbf24; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg.bot .c-ok { color: var(--ok); } :root:not([data-theme="light"]) .msg.bot .c-no { color: var(--warn); } }
+.powered { position: absolute; left: 0; right: 0; bottom: 74px; z-index: 2; text-align: center; font-size: 12px; color: rgba(255,255,255,.85); }
+.toggle { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 3; display: flex; gap: 4px; padding: 5px; border-radius: 999px; background: rgba(28,25,23,.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); white-space: nowrap; }
+.toggle button { border: 0; cursor: pointer; padding: 8px 16px; border-radius: 999px; font: 500 13px Inter, sans-serif; background: transparent; color: rgba(255,255,255,.75); transition: background .2s, color .2s; }
+.toggle button[aria-pressed="true"] { background: rgba(255,255,255,.95); color: #1c1917; }
+
+/* marquee */
+.marquee-sec { padding: 64px 0 24px; text-align: center; }
+.marquee-sec p { margin: 0 0 26px; font-size: 13px; color: var(--faint); }
+.marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.marquee .track { display: flex; gap: 64px; width: max-content; animation: slide 36s linear infinite; }
+.marquee:hover .track { animation-play-state: paused; }
+.marquee span { font-size: 24px; color: var(--faint); white-space: nowrap; transition: color .3s; }
+.marquee span:hover { color: var(--ink); }
+.marquee span.m { font: 500 17px "JetBrains Mono", monospace; letter-spacing: .04em; padding-top: 5px; }
+@keyframes slide { to { transform: translateX(-50%); } }
+
+/* word scrub heading */
+.intro { padding: 110px 0 40px; text-align: center; }
+.intro h2 { font-size: clamp(34px, 5.6vw, 64px); line-height: 1.08; margin: 18px auto 0; max-width: 900px; }
+.scrub .w { opacity: .14; transition: opacity .25s linear; }
+
+/* pinned pipeline */
+.pipe { position: relative; height: 420vh; }
+.pipe-in { position: sticky; top: 0; height: 100vh; display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: clamp(28px, 4vw, 64px); align-items: center; max-width: 1240px; margin: 0 auto; padding: 70px max(20px, 3vw) 30px; }
+.pipe-copy .title { display: flex; align-items: center; gap: 12px; font-size: 28px; margin-bottom: 10px; }
+.pipe-copy .title img { width: 36px; height: 36px; border-radius: 10px; }
+.pipe-copy > p { color: var(--muted); font-size: 15px; margin: 0 0 22px; }
+.steps-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.steps-list li { border-bottom: 1px solid var(--line); padding: 14px 0; position: relative; cursor: pointer; }
+.steps-list .head { display: flex; gap: 14px; align-items: baseline; font-size: 15px; color: var(--muted); transition: color .3s; }
+.steps-list .head .n { font: 12px "JetBrains Mono", monospace; color: var(--faint); transition: color .3s; }
+.steps-list .body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s cubic-bezier(.2,.7,.2,1); }
+.steps-list .body > div { overflow: hidden; }
+.steps-list .body p { margin: 10px 0 2px; font-size: 14px; color: var(--muted); }
+.steps-list .body .tag { display: inline-block; margin-top: 8px; font: 11px "JetBrains Mono", monospace; color: var(--faint); }
+.steps-list li.on .head { color: var(--ink); }
+.steps-list li.on .head .n { color: var(--red); }
+.steps-list li.on .body { grid-template-rows: 1fr; }
+.steps-list .bar { position: absolute; left: 0; top: -1px; height: 1px; width: 0; background: var(--ink); }
+.pipe-stage { position: relative; height: min(76vh, 640px); border-radius: 24px; }
+.pipe-stage .win { position: absolute; inset: 0; border-radius: 24px; }
+.panel { position: absolute; left: 50%; top: 50%; width: min(440px, 88%); transform: translate(-50%, -46%) scale(.97); opacity: 0; filter: blur(8px); transition: opacity .55s, transform .65s cubic-bezier(.2,.75,.15,1), filter .55s; z-index: 2;
+  background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 18px; padding: 16px; box-shadow: 0 30px 70px -30px rgba(0,0,0,.5); pointer-events: none; }
+.panel.on { opacity: 1; transform: translate(-50%, -50%); filter: none; pointer-events: auto; }
+.panel .ph { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.panel .ph img { width: 22px; height: 22px; border-radius: 6px; }
+.panel .ph .k { margin-left: auto; font: 11px "JetBrains Mono", monospace; color: #78716c; font-weight: 400; }
+.panel .cap { font-size: 12px; color: #78716c; margin-top: 10px; }
+/* panel 1: contact sheet */
+.sheet { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fr { aspect-ratio: 4/3; border-radius: 6px; background: linear-gradient(160deg, #ece8e1, #dcd6cc); position: relative; overflow: hidden; }
+.fr::before { content: ""; position: absolute; left: 12%; right: 30%; top: 22%; height: 8%; border-radius: 3px; background: rgba(28,25,23,.18); box-shadow: 0 10px 0 rgba(28,25,23,.1), 0 20px 0 rgba(28,25,23,.1); }
+.fr span { position: absolute; left: 4px; bottom: 2px; font: 9px "JetBrains Mono", monospace; color: #78716c; }
+.fr.bug { outline: 2px solid var(--red); outline-offset: -2px; }
+.fr.bug span { color: var(--red); }
+.panel.on .fr { animation: pop .5s backwards; }
+@keyframes pop { from { opacity: 0; transform: scale(.85); } }
+.quote { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: rgba(28,25,23,.06); font-size: 13px; }
+.quote b { font: 500 10px "JetBrains Mono", monospace; letter-spacing: .1em; color: #78716c; display: block; margin-bottom: 2px; }
+/* panel 2: grounding */
+.rows { border-radius: 12px; background: #fff; padding: 6px 10px; position: relative; }
+.row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #eee; font-size: 14px; color: #1c1917; }
+.row:last-child { border-bottom: 0; }
+.row .cb { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #c9c3b9; }
+.row .x { margin-left: auto; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; position: relative; color: #78716c; }
+.row .x::after { content: attr(data-n); position: absolute; right: -6px; top: -12px; font: 9px "JetBrains Mono", monospace; color: #2563eb; white-space: nowrap; opacity: 0; transition: opacity .3s .4s; }
+.panel.on .row .x { outline: 1.5px dashed #2563eb; outline-offset: 2px; }
+.panel.on .row .x::after { opacity: 1; }
+.panel.on .row .x.hit { outline: 2px solid var(--red); }
+.cursor { position: absolute; width: 18px; height: 18px; right: 4px; bottom: -2px; transition: transform 1s cubic-bezier(.3,.7,.2,1) .2s; transform: translate(-90px, 30px); }
+.panel.on .cursor { transform: none; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.chip { font: 11px "JetBrains Mono", monospace; padding: 3px 8px; border-radius: 999px; background: rgba(28,25,23,.07); color: #44403c; }
+.chip.g { background: #dcfce7; color: #166534; }
+/* panel 3: test */
+pre.code { margin: 0; padding: 12px 14px; border-radius: 12px; background: #1c1917; color: #e7e5e4; font-size: 11px; line-height: 1.6; overflow: hidden; white-space: pre; }
+pre.code .k { color: #c4b5fd; } pre.code .s { color: #fdba74; } pre.code .c { color: #78716c; }
+.result { margin-top: 10px; display: grid; gap: 6px; font: 12px "JetBrains Mono", monospace; }
+.result div { display: flex; gap: 8px; align-items: center; opacity: 0; transform: translateX(-6px); transition: all .4s; }
+.panel.on .result div { opacity: 1; transform: none; }
+.panel.on .result div:nth-child(2) { transition-delay: .35s; }
+.panel.on .result div:nth-child(3) { transition-delay: .7s; }
+.fail { color: #dc2626; } .pass { color: #16a34a; }
+/* panel 4: PR */
+.pr { border-radius: 12px; background: #fff; padding: 12px 14px; color: #1c1917; }
+.pr .t { font-weight: 600; font-size: 14px; }
+.pr .br { font: 11px "JetBrains Mono", monospace; color: #78716c; margin: 4px 0 10px; }
+.pr .cm { display: flex; gap: 10px; align-items: center; font-size: 13px; padding: 6px 0; border-top: 1px solid #eee; }
+.pr .cm code { font-size: 11px; color: #78716c; margin-left: auto; }
+.pr .dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #a8a29e; }
+.checks { margin-top: 10px; display: grid; gap: 5px; font-size: 13px; }
+.checks div { display: flex; align-items: center; gap: 8px; opacity: 0; transition: opacity .4s; }
+.panel.on .checks div { opacity: 1; }
+.panel.on .checks div:nth-child(2) { transition-delay: .25s; } .panel.on .checks div:nth-child(3) { transition-delay: .5s; }
+.checks svg { flex: none; }
+
+/* run playback */
+.run-sec { padding: 120px 0 0; text-align: center; }
+.run-sec .lead { margin: 0 auto 44px; }
+.run-win { height: min(92vh, 760px); min-height: 600px; }
+.run-grid { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 520px) 250px; gap: 18px; justify-content: center; align-items: center; padding: 30px; text-align: left; }
+.player { background: rgba(20,18,17,.9); color: #f5f5f4; border-radius: 18px; padding: 16px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 30px 70px -30px rgba(0,0,0,.6); }
+.player .top { display: flex; align-items: center; gap: 10px; }
+.player .av { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #292524; font-size: 12px; }
+.player .av img { width: 20px; height: 20px; }
+.player .nm { font-size: 14px; font-weight: 500; line-height: 1.2; }
+.player .nm small { display: block; font-weight: 400; font-size: 12px; color: #a8a29e; }
+.player .rec { margin-left: auto; display: flex; align-items: center; gap: 6px; font: 12px "JetBrains Mono", monospace; color: #a8a29e; }
+.player .rec i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+.player.playing .rec i { animation: blink 1s infinite; }
+.wave { display: flex; align-items: center; gap: 3px; height: 44px; margin: 14px 0 6px; }
+.wave b { flex: 1; border-radius: 2px; background: #57534e; min-height: 4px; transition: background .2s; }
+.wave b.done { background: #f87171; }
+.player.playing .wave b.now { animation: bounce .5s infinite alternate; }
+@keyframes bounce { to { transform: scaleY(1.5); } }
+.log { height: 214px; overflow: hidden; position: relative; -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%); mask-image: linear-gradient(180deg, transparent, #000 18%); }
+.log ol { list-style: none; margin: 0; padding: 0; position: absolute; left: 0; right: 0; bottom: 0; transition: transform .4s; }
+.log li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 4px 0; font-size: 13.5px; color: #57534e; transition: color .4s; }
+.log li .ts { font: 11px "JetBrains Mono", monospace; padding-top: 3px; }
+.log li.done { color: #d6d3d1; }
+.log li.cur { color: #fff; }
+.log li.cur .ts { color: #f87171; }
+.log li.hidden { display: none; }
+.log li b { font-weight: 600; }
+.ctrl { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.ctrl button { width: 30px; height: 30px; border-radius: 50%; border: 0; background: #f5f5f4; color: #1c1917; display: grid; place-items: center; cursor: pointer; flex: none; }
+.ctrl .track { flex: 1; height: 3px; border-radius: 3px; background: #44403c; position: relative; }
+.ctrl .track i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #f5f5f4; border-radius: 3px; }
+.ctrl .track i::after { content: ""; position: absolute; right: -5px; top: -4px; width: 11px; height: 11px; border-radius: 50%; background: #f5f5f4; }
+.ctrl .tm { font: 11px "JetBrains Mono", monospace; color: #a8a29e; white-space: nowrap; }
+.evidence { background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 16px; padding: 14px; box-shadow: 0 30px 70px -30px rgba(0,0,0,.5); font-size: 13px; }
+.evidence h4 { margin: 0 0 8px; font: 500 10px "JetBrains Mono", monospace; letter-spacing: .12em; color: #78716c; text-transform: uppercase; }
+.evidence .kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(28,25,23,.08); }
+.evidence .kv span:last-child { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+.evidence .verdict { margin-top: 14px; }
+.evidence .verdict .serif { font-size: 24px; line-height: 1.1; display: block; transition: color .4s; }
+.evidence .meter { height: 3px; border-radius: 3px; background: rgba(28,25,23,.1); margin-top: 10px; overflow: hidden; }
+.evidence .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
+
+/* stats */
+.stats-sec { padding: 120px 0 40px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); margin-top: 40px; }
+.stat { padding: 24px 22px 6px; border-left: 1px solid var(--line); }
+.stat:first-child { border-left: 0; padding-left: 0; }
+.stat .was { font: 11px "JetBrains Mono", monospace; color: var(--red); text-decoration: line-through; display: block; min-height: 18px; }
+.stat b { display: block; font-size: clamp(38px, 5vw, 58px); line-height: 1.1; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
+.stat span.l { color: var(--muted); font-size: 14px; }
+
+/* guarantees (tabbed, autoplay) */
+.trust { padding: 100px 0 120px; }
+.trust-grid { display: grid; grid-template-columns: 1fr 340px; gap: clamp(28px, 6vw, 90px); align-items: start; margin-top: 30px; }
+.statement { position: relative; min-height: 250px; }
+.statement blockquote { margin: 0; font-size: clamp(24px, 3.2vw, 36px); line-height: 1.25; position: absolute; inset: 0 0 auto 0; opacity: 0; transform: translateY(14px); transition: opacity .55s, transform .7s cubic-bezier(.2,.75,.15,1); }
+.statement blockquote.on { opacity: 1; transform: none; position: relative; }
+.statement blockquote::before { content: "“"; color: var(--red); margin-left: -.45em; }
+.statement blockquote small { display: block; margin-top: 18px; font: 14px/1.6 Inter, sans-serif; color: var(--muted); letter-spacing: 0; }
+.tabs { list-style: none; margin: 0; padding: 0; }
+.tabs button { display: flex; width: 100%; gap: 12px; align-items: center; text-align: left; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; color: var(--faint); font: 500 15px Inter, sans-serif; position: relative; transition: color .3s; }
+.tabs button .ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--ink) 6%, transparent); flex: none; transition: background .3s; }
+.tabs button small { display: block; font-weight: 400; font-size: 12px; color: var(--faint); }
+.tabs button[aria-selected="true"] { color: var(--ink); }
+.tabs button[aria-selected="true"] .ic { background: var(--ink); color: var(--bg); }
+.tabs button .pb { position: absolute; left: 0; bottom: -1px; height: 1px; width: 0; background: var(--ink); }
+
+/* setup */
+.setup { padding: 20px 0 120px; }
+.setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px, 5vw, 70px); align-items: center; margin-top: 30px; }
+.setup ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+.setup li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.setup li::before { content: "0" counter(s); font: 12px "JetBrains Mono", monospace; color: var(--red); padding-top: 4px; }
+.setup li b { font-weight: 500; display: block; }
+.setup li span { color: var(--muted); font-size: 14px; }
+.setup li code { font-size: 13px; padding: 1px 6px; border-radius: 5px; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.yml { border-radius: 18px; background: #1c1917; color: #e7e5e4; padding: 18px 20px; font: 13px/1.8 "JetBrains Mono", monospace; overflow-x: auto; box-shadow: 0 30px 70px -40px rgba(0,0,0,.5); }
+.yml .fn { color: #a8a29e; font-size: 11px; display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.yml .fn i { width: 9px; height: 9px; border-radius: 50%; background: #44403c; }
+.yml .k { color: #fca5a5; } .yml .c { color: #78716c; }
+.yml .ln { display: block; opacity: 0; transform: translateX(-6px); transition: opacity .4s, transform .4s; }
+.yml.in .ln { opacity: 1; transform: none; }
+
+/* closing night window */
+.end-win { height: min(84vh, 720px); min-height: 520px; margin-bottom: 0; }
+.stars { position: absolute; inset: 0 0 35% 0; z-index: 0; }
+.stars i { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff; animation: twinkle 3s infinite ease-in-out; }
+@keyframes twinkle { 50% { opacity: .15; } }
+.end-win .center { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; text-align: center; color: #fff; padding: 20px; }
+.end-win h2 { font-size: clamp(40px, 7vw, 84px); line-height: 1.02; margin: 14px 0 16px; }
+.end-win h2 em { font-style: italic; color: #fca5a5; }
+.end-win p { margin: 0 0 26px; opacity: .8; }
+.end-win .eyebrow { color: rgba(255,255,255,.7); }
+.end-win .pill { background: #fff; color: #1c1917; }
+.end-win .pill.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.35); }
+.end-win .cta2 { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.end-win .small { margin-top: 18px; font-size: 13px; opacity: .65; }
+.end-win .badges { position: absolute; left: 0; right: 0; bottom: 26px; z-index: 2; display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; font: 11px "JetBrains Mono", monospace; letter-spacing: .1em; color: rgba(255,255,255,.7); text-transform: uppercase; padding: 0 16px; }
+.end-win .badges span { display: flex; gap: 8px; align-items: center; }
+
+/* footer */
+footer { padding: 70px 0 0; overflow: hidden; }
+.foot-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 30px; }
+.foot-grid .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 17px; margin-bottom: 10px; }
+.foot-grid p { margin: 0; color: var(--muted); font-size: 14px; max-width: 280px; }
+.foot-grid .status { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.foot-grid .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.foot-grid h5 { margin: 0 0 12px; font: 500 11px "JetBrains Mono", monospace; letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
+.foot-grid ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+.foot-grid ul a:hover { color: var(--ink); }
+.wordmark { font-size: clamp(120px, 27vw, 380px); line-height: .8; text-align: center; margin: 40px 0 0; letter-spacing: -0.05em;
+  background: linear-gradient(180deg, var(--ink) 30%, transparent 92%); -webkit-background-clip: text; background-clip: text; color: transparent; transform: translateY(var(--wy, 30%)); }
+.legal { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 0 28px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); position: relative; }
+
+/* reveal */
+.rv { opacity: 0; transform: translateY(22px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+.rv.in { opacity: 1; transform: none; }
+
+@media (max-width: 900px) {
+  .nav .links { display: none; }
+  .pipe { height: auto; }
+  .pipe-in { position: static; height: auto; display: block; padding: 90px max(20px, 4vw) 20px; }
+  .steps-list li .body { grid-template-rows: 1fr; }
+  .steps-list li .head { color: var(--ink); }
+  .steps-list .bar { display: none; }
+  .pipe-stage { height: auto; margin-top: 26px; display: grid; gap: 14px; }
+  .pipe-stage .win { border-radius: 22px; }
+  .panel { position: relative; left: auto; top: auto; transform: none; opacity: 1; filter: none; width: auto; margin: 22px; pointer-events: auto; }
+  .panel.on { transform: none; }
+  .pipe-stage .slot { position: relative; border-radius: 22px; overflow: hidden; }
+  .run-grid { grid-template-columns: 1fr; align-content: center; padding: 18px; }
+  .evidence { display: none; }
+  .run-win { min-height: 520px; height: auto; padding: 0; }
+  .run-win .run-grid { position: relative; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat:nth-child(3) { border-left: 0; padding-left: 0; }
+  .trust-grid, .setup-grid { grid-template-columns: 1fr; }
+  .statement { min-height: 300px; }
+  .foot-grid { grid-template-columns: 1fr 1fr; }
+  .msg.user, .msg.bot { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .stats { grid-template-columns: 1fr; }
+  .stat { border-left: 0; padding-left: 0; border-bottom: 1px solid var(--line); }
+  .hero-win { min-height: 600px; }
+  .powered { display: none; }
+  .end-win .sun { left: 8%; top: 6%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rv, .line > span, .fade-up { opacity: 1; transform: none; transition: none; animation: none; }
+  .marquee .track, .live i, .stars i, .typing b { animation: none; }
+  .msg, .panel, .win, .win svg.land path { transition: none; }
+  .scrub .w { opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a href="/welcome" class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</a>
+  <nav class="links"><a href="#how">How it works</a><a href="#run">Watch a run</a><a href="#trust">Guarantees</a><a href="#setup">Setup</a></nav>
+  <div class="sp"></div>
+  <a class="pill" href="/">Open dashboard</a>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <span class="badge mono fade-up d0"><i></i>New: 4 of 4 on the eval</span>
+  <h1 class="serif" aria-label="Send a video. Get a fix."><span class="line"><span>Send a video.</span></span><span class="line"><span>Get a <em>fix</em>.</span></span></h1>
+  <p class="sub fade-up">Gecko watches a screen recording of a bug, reproduces it in a real browser, and opens a pull request that proves it and fixes it.</p>
+  <div class="cta fade-up d2">
+    <a class="pill" href="/github/setup">Add to GitHub</a>
+    <a class="pill ghost" href="#run">Watch a run</a>
+  </div>
+</section>
+
+<section class="win hero-win hour-dawn" id="scene" aria-label="Gecko replying to a bug report">
+  <div class="sun" data-par="0.25"></div>
+  <svg class="land" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" data-par="0.12">
+    <path fill="var(--far)" d="M0 210 L90 150 L170 190 L280 110 L400 180 L520 120 L640 190 L760 100 L880 170 L1000 120 L1100 170 L1200 130 V420 H0Z"/>
+    <path fill="var(--mid)" d="M0 270 L120 210 L230 250 L350 190 L480 260 L610 200 L740 260 L880 190 L1010 250 L1120 210 L1200 240 V420 H0Z"/>
+    <path fill="var(--near)" d="M0 340 L140 290 L260 330 L400 280 L540 340 L690 290 L830 345 L980 295 L1100 330 L1200 305 V420 H0Z"/>
+    <path fill="var(--ground)" d="M0 390 L160 360 L330 392 L520 365 L700 395 L900 368 L1060 392 L1200 375 V420 H0Z"/>
+  </svg>
+  <div class="live mono"><i></i><span id="live-n">run · 139 s</span></div>
+  <div class="thread" aria-live="polite">
+    <div class="msg user" id="m-user">
+      <div class="who"><span id="u-who">Issue #12</span><span class="clip">▶ recording.mov</span></div>
+      <p id="u-text"></p>
+    </div>
+    <div class="msg bot" id="m-bot">
+      <div class="who"><i></i>gecko[bot]</div>
+      <p id="b-text"></p>
+      <div class="res" id="b-res"></div>
+    </div>
+  </div>
+  <div class="powered">Reproduced in a real browser. Verified by running code.</div>
+  <div class="toggle" role="group" aria-label="Choose an outcome">
+    <button type="button" data-s="fixed" aria-pressed="true">Caught it</button>
+    <button type="button" data-s="declined" aria-pressed="false">Couldn't reproduce</button>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<section class="marquee-sec">
+  <p class="rv">Built on Meta's models and a real browser</p>
+  <div class="marquee rv" aria-label="Muse Spark, SAM 3.1, Muse Voice Transcribe, Muse Code, Playwright, Chrome, GitHub">
+    <div class="track" aria-hidden="true">
+      <span class="serif">Muse Spark</span><span class="m">SAM 3.1</span><span class="serif"><i>Muse Voice</i></span><span class="m">MUSE CODE</span><span class="serif">Playwright</span><span class="m">CHROME</span><span class="serif">GitHub App</span>
+      <span class="serif">Muse Spark</span><span class="m">SAM 3.1</span><span class="serif"><i>Muse Voice</i></span><span class="m">MUSE CODE</span><span class="serif">Playwright</span><span class="m">CHROME</span><span class="serif">GitHub App</span>
+    </div>
+  </div>
+</section>
+
+<!-- INTRO SCRUB -->
+<section class="intro wrap" id="how">
+  <span class="eyebrow rv"><i></i>How it works</span>
+  <h2 class="serif scrub">From screen recording to failing test to verified fix.</h2>
+</section>
+
+<!-- PINNED PIPELINE -->
+<section class="pipe" id="pipe">
+  <div class="pipe-in">
+    <div class="pipe-copy">
+      <div class="title serif"><img src="/static/brand/logo.svg" alt="">The run</div>
+      <p>Attach a recording to an issue. Gecko does the rest, and checks every claim by running code.</p>
+      <ol class="steps-list">
+        <li class="on"><span class="bar"></span><div class="head"><span class="n">01</span>Watch the recording</div>
+          <div class="body"><div><p>Frames are sampled where the screen changes and tiled into contact sheets. Narration is transcribed. Muse Spark writes the steps, what should have happened, and the frame that shows the bug.</p><span class="tag">Muse Voice Transcribe · Muse Spark</span></div></div></li>
+        <li><span class="bar"></span><div class="head"><span class="n">02</span>Find what was clicked</div>
+          <div class="body"><div><p>SAM finds the cursor and every look-alike element on screen, so Gecko knows it was "the 2nd × of 2", then finds the same one in the live page. No pixel mapping.</p><span class="tag">SAM 3.1</span></div></div></li>
+        <li><span class="bar"></span><div class="head"><span class="n">03</span>Reproduce it as a test</div>
+          <div class="body"><div><p>A Playwright replay runs the steps in Chrome. The test must fail on an assertion and the screen must match the video. If not, Gecko tries how the user's actions might have differed, like a double click.</p><span class="tag">Playwright · Muse Spark</span></div></div></li>
+        <li><span class="bar"></span><div class="head"><span class="n">04</span>Fix it, with proof</div>
+          <div class="body"><div><p>Muse Code patches the app against that failing test. The patch counts only if the test passes, the test is untouched, and the suite stays green. Up to 3 rounds.</p><span class="tag">Muse Code · GitHub</span></div></div></li>
+      </ol>
+    </div>
+    <div class="pipe-stage">
+      <div class="win hour-noon" aria-hidden="true">
+        <div class="sun" style="left:18%;top:10%"></div>
+        <svg class="land" viewBox="0 0 1200 420" preserveAspectRatio="none">
+          <path fill="var(--far)" d="M0 200 L120 120 L240 180 L360 90 L500 170 L640 110 L780 190 L920 100 L1060 170 L1200 120 V420 H0Z"/>
+          <path fill="var(--mid)" d="M0 280 L150 220 L300 270 L460 200 L620 270 L780 215 L940 280 L1100 225 L1200 255 V420 H0Z"/>
+          <path fill="var(--near)" d="M0 350 L170 305 L340 345 L520 300 L700 350 L880 310 L1060 345 L1200 320 V420 H0Z"/>
+          <path fill="var(--ground)" d="M0 395 L220 375 L460 398 L700 378 L940 398 L1200 382 V420 H0Z"/>
+        </svg>
+      </div>
+
+      <div class="panel on" data-i="0">
+        <div class="ph"><img src="/static/brand/logo.svg" alt="">Watching the recording<span class="k">1/4</span></div>
+        <div class="sheet">
+          <div class="fr"><span>f01</span></div><div class="fr"><span>f02</span></div><div class="fr"><span>f03</span></div><div class="fr"><span>f04</span></div>
+          <div class="fr"><span>f05</span></div><div class="fr"><span>f06</span></div><div class="fr"><span>f07</span></div><div class="fr"><span>f08</span></div>
+          <div class="fr"><span>f09</span></div><div class="fr"><span>f10</span></div><div class="fr bug"><span>f11 bug</span></div><div class="fr"><span>f12</span></div>
+        </div>
+        <div class="quote"><b>NARRATION</b>"I switch to Active and delete Book flights, but Buy milk is the one that goes."</div>
+        <div class="cap">12 frames · 4 steps · expected vs actual written</div>
+      </div>
+
+      <div class="panel" data-i="1">
+        <div class="ph"><img src="/static/brand/logo.svg" alt="">Finding the target<span class="k">2/4</span></div>
+        <div class="rows">
+          <div class="row"><span class="cb"></span>Buy milk<span class="x" data-n="1 of 2">×</span></div>
+          <div class="row"><span class="cb"></span>Book flights<span class="x hit" data-n="2 of 2">×</span></div>
+          <svg class="cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2l16 10-7 1.5L9.5 21z" fill="#1c1917" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="chips"><span class="chip">× icon</span><span class="chip">2nd of 2</span><span class="chip">"the × on the Book flights row"</span><span class="chip g">high confidence</span></div>
+        <div class="cap">The ordinal and the row description agree, so the step is marked high confidence.</div>
+      </div>
+
+      <div class="panel" data-i="2">
+        <div class="ph"><img src="/static/brand/logo.svg" alt="">Writing the failing test<span class="k">3/4</span></div>
+<pre class="code"><span class="k">test</span>(<span class="s">'deletes the right task'</span>, <span class="k">async</span> ({ page }) =&gt; {
+  <span class="k">await</span> page.getByText(<span class="s">'Active'</span>).click();
+  <span class="k">const</span> x = page.getByRole(<span class="s">'button'</span>, { name: <span class="s">'×'</span> });
+  <span class="k">await</span> x.nth(<span class="s">1</span>).click();  <span class="c">// 2nd of 2</span>
+  <span class="k">await</span> expect(page.getByText(<span class="s">'Buy milk'</span>))
+    .toBeVisible();
+});</pre>
+        <div class="result">
+          <div class="fail">✕ fails on main: 'Buy milk' not visible</div>
+          <div class="pass">✓ replay screen matches the video's bug frame</div>
+          <div class="pass">✓ reproduced in 1 attempt</div>
+        </div>
+      </div>
+
+      <div class="panel" data-i="3">
+        <div class="ph"><img src="/static/brand/logo.svg" alt="">Opening the pull request<span class="k">4/4</span></div>
+        <div class="pr">
+          <div class="t">Deleting in Active view removes the correct task</div>
+          <div class="br">gecko/wrong-delete → main</div>
+          <div class="cm"><span class="dot"></span>Add failing test from recording<code>a41c9e2</code></div>
+          <div class="cm"><span class="dot" style="border-color:#16a34a"></span>Delete the clicked task by id<code>7be03d1</code></div>
+        </div>
+        <div class="checks">
+          <div><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#16a34a"/><path d="M4.5 8.2l2.2 2.2 4.8-4.8" stroke="#fff" stroke-width="1.8" fill="none"/></svg>New test passes</div>
+          <div><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#16a34a"/><path d="M4.5 8.2l2.2 2.2 4.8-4.8" stroke="#fff" stroke-width="1.8" fill="none"/></svg>Test file byte-identical</div>
+          <div><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#16a34a"/><path d="M4.5 8.2l2.2 2.2 4.8-4.8" stroke="#fff" stroke-width="1.8" fill="none"/></svg>Existing suite green</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RUN PLAYBACK -->
+<section class="run-sec" id="run">
+  <div class="wrap">
+    <span class="eyebrow rv"><i></i>Watch a run</span>
+    <h2 class="serif big rv">Recording in. Pull request out.<br>Two minutes later.</h2>
+    <p class="lead rv">A real eval case, start to finish: two identical × buttons, and the wrong task disappears.</p>
+  </div>
+  <div class="win framed run-win hour-dusk" id="runwin">
+    <div class="sun" data-par="0.2" style="left:70%;top:52%"></div>
+    <svg class="land" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" data-par="0.1">
+      <path fill="var(--far)" d="M0 220 L110 160 L220 200 L330 130 L460 200 L590 140 L720 205 L850 125 L980 190 L1100 150 L1200 185 V420 H0Z"/>
+      <path fill="var(--mid)" d="M0 290 L130 235 L260 275 L400 215 L540 280 L690 225 L830 285 L980 230 L1100 270 L1200 245 V420 H0Z"/>
+      <path fill="var(--near)" d="M0 350 L150 310 L300 345 L450 300 L600 350 L760 305 L920 350 L1080 315 L1200 340 V420 H0Z"/>
+      <path fill="var(--ground)" d="M0 395 L200 372 L420 398 L640 376 L860 399 L1040 380 L1200 392 V420 H0Z"/>
+    </svg>
+    <div class="run-grid">
+      <div class="player" id="player">
+        <div class="top">
+          <div class="av"><img src="/static/brand/logo.svg" alt=""></div>
+          <div class="nm">wrong-delete<small>todo app · issue with recording · run by Gecko</small></div>
+          <div class="rec"><i></i><span id="p-clock">0:00</span></div>
+        </div>
+        <div class="wave" id="wave" aria-hidden="true"></div>
+        <div class="log"><ol id="log"></ol></div>
+        <div class="ctrl">
+          <button type="button" id="p-btn" aria-label="Play run">
+            <svg id="p-ic" width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>
+          </button>
+          <div class="track"><i id="p-bar"></i></div>
+          <span class="tm"><span id="p-t">0:00</span> / 2:19</span>
+        </div>
+      </div>
+      <aside class="evidence" aria-label="Run evidence">
+        <h4>Evidence</h4>
+        <div class="kv"><span>Replay attempts</span><span id="e-att">0</span></div>
+        <div class="kv"><span>Fix rounds</span><span id="e-rnd">0</span></div>
+        <div class="kv"><span>Meta API cost</span><span id="e-cost">$0.00</span></div>
+        <div class="kv"><span>Hidden reference test</span><span id="e-ref">waiting</span></div>
+        <div class="verdict"><h4>Verdict</h4><span class="serif" id="e-v">Watching…</span><div class="meter"><i id="e-m"></i></div></div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats-sec wrap" id="proof">
+  <span class="eyebrow rv"><i></i>The eval</span>
+  <h2 class="serif big rv">The back-and-forth, gone.</h2>
+  <div class="stats">
+    <div class="stat rv"><span class="was">"can you send repro steps?"</span><b class="serif" data-count="139" data-suffix=" s">0 s</b><span class="l">Median time, video to verified fix</span></div>
+    <div class="stat rv"><span class="was"></span><b class="serif" data-count="4" data-fmt="of4">0 of 4</b><span class="l">Eval bugs handled correctly</span></div>
+    <div class="stat rv"><span class="was"></span><b class="serif" data-count="0.117" data-prefix="$" data-dec="3">$0.000</b><span class="l">Median Meta API cost per run</span></div>
+    <div class="stat rv"><span class="was"></span><b class="serif" data-count="0">0</b><span class="l">Guess PRs opened</span></div>
+  </div>
+</section>
+
+<!-- GUARANTEES -->
+<section class="trust wrap" id="trust">
+  <span class="eyebrow rv"><i></i>Built for production</span>
+  <h2 class="serif big rv">Verification, not trust.</h2>
+  <div class="trust-grid">
+    <div class="statement rv" id="stmt">
+      <blockquote class="serif on">A run reports reproduced only when the test fails on an assertion and the replay's screen matches the video's bug frame.<small>A fix is accepted only when the new test passes, the test file is byte-identical, and the existing suite is green.</small></blockquote>
+      <blockquote class="serif">If Gecko can't reproduce a bug, it says so on the issue, with its evidence. It never opens a speculative PR.<small>In the eval, a user reported a task vanishing on reload. The video showed it didn't. Gecko declined after 3 attempts.</small></blockquote>
+      <blockquote class="serif">Every run clones your repo into its own folder and starts the app on a free port. Your checkout is never touched.<small>Lockfile-keyed install cache, a durable SQLite queue, and crashed runs re-queued once on restart.</small></blockquote>
+      <blockquote class="serif">A global cap and a per-run cap, with every model call attributed to its run in a ledger.<small>Per-run cap defaults to $3. Calls retry 429s and 5xx with jittered backoff and honour Retry-After.</small></blockquote>
+      <blockquote class="serif">The GitHub App asks only for contents, issues and pull requests, with short-lived tokens.<small>Muse Code runs with its OS sandbox on and web tools off. Contributor mode is off, so your code is not used for training.</small></blockquote>
+    </div>
+    <div class="tabs rv" role="tablist" aria-label="Guarantees">
+      <button role="tab" aria-selected="true"><span class="ic">✓</span><span>Verified fixes<small>Proof by running code</small></span><span class="pb"></span></button>
+      <button role="tab" aria-selected="false"><span class="ic">?</span><span>Honest failure<small>No guesses</small></span><span class="pb"></span></button>
+      <button role="tab" aria-selected="false"><span class="ic">▢</span><span>Isolated runs<small>Own clone, own port</small></span><span class="pb"></span></button>
+      <button role="tab" aria-selected="false"><span class="ic">$</span><span>Spend control<small>Capped and ledgered</small></span><span class="pb"></span></button>
+      <button role="tab" aria-selected="false"><span class="ic">⌁</span><span>Least privilege<small>Sandboxed, no training</small></span><span class="pb"></span></button>
+    </div>
+  </div>
+</section>
+
+<!-- SETUP -->
+<section class="setup wrap" id="setup">
+  <span class="eyebrow rv"><i></i>Setup</span>
+  <h2 class="serif big rv">Three steps to your repo.</h2>
+  <div class="setup-grid">
+    <ol class="rv">
+      <li><div><b>Install the GitHub App</b><span>Create it from <code>/github/setup</code> on your Gecko server, then install it on a repo.</span></div></li>
+      <li><div><b>Add a <code>.gecko.yml</code></b><span>Tell Gecko how to install, start and test your app. Playwright reads its base URL from <code>GECKO_BASE_URL</code>.</span></div></li>
+      <li><div><b>Open an issue with a recording</b><span><code>gecko[bot]</code> replies "On it." and edits the comment with the result and the PR. Comment <code>/gecko</code> on older issues.</span></div></li>
+    </ol>
+    <div class="yml rv" id="yml">
+      <div class="fn"><i></i><i></i><i></i>&nbsp;.gecko.yml</div>
+      <span class="ln"><span class="k">install:</span> npm ci</span>
+      <span class="ln"><span class="k">start:</span> npx vite --port {port} --strictPort --host 127.0.0.1</span>
+      <span class="ln"><span class="k">ready_path:</span> /</span>
+      <span class="ln"><span class="k">test:</span> npx playwright test</span>
+      <span class="ln"><span class="k">test_dir:</span> tests/gecko</span>
+      <span class="ln"><span class="k">fresh_state:</span> [localStorage]</span>
+    </div>
+  </div>
+</section>
+
+<!-- CLOSING NIGHT -->
+<section class="win framed end-win hour-night" aria-label="Get started">
+  <div class="stars" id="stars" aria-hidden="true"></div>
+  <div class="sun" data-par="0.2"></div>
+  <svg class="land" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" data-par="0.1">
+    <path fill="var(--far)" d="M0 250 L130 190 L260 230 L380 170 L520 235 L660 180 L800 240 L940 175 L1080 225 L1200 195 V420 H0Z"/>
+    <path fill="var(--mid)" d="M0 305 L160 260 L320 300 L480 250 L640 305 L800 260 L960 305 L1120 270 L1200 290 V420 H0Z"/>
+    <path fill="var(--near)" d="M0 360 L180 325 L360 360 L540 320 L720 362 L900 328 L1080 360 L1200 340 V420 H0Z"/>
+    <path fill="var(--ground)" d="M0 400 L240 382 L480 402 L720 385 L960 402 L1200 388 V420 H0Z"/>
+  </svg>
+  <div class="center"><div>
+    <span class="eyebrow"><i></i>Get started</span>
+    <h2 class="serif">Quiet issues.<br><em>Caught</em> bugs.</h2>
+    <p>Your users already record the bug. Let Gecko catch it.</p>
+    <div class="cta2"><a class="pill" href="/github/setup">Add to GitHub</a><a class="pill ghost" href="/">Open dashboard</a></div>
+    <div class="small">Have an old issue? Comment <span class="mono">/gecko</span> on it.</div>
+  </div></div>
+  <div class="badges"><span>◇ Isolated runs</span><span>◇ Sandboxed Muse Code</span><span>◇ No training on your code</span></div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div><div class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</div><p>Send a video of a bug, get back a pull request that proves it and fixes it.</p></div>
+      <div><h5>Product</h5><ul><li><a href="#how">How it works</a></li><li><a href="#run">Watch a run</a></li><li><a href="#trust">Guarantees</a></li></ul></div>
+      <div><h5>Developers</h5><ul><li><a href="#setup">Setup</a></li><li><a href="/docs">API docs</a></li><li><a href="/github/setup">GitHub App</a></li></ul></div>
+      <div><h5>Workspace</h5><ul><li><a href="/">Dashboard</a></li><li><a href="/ops">Ops</a></li></ul></div>
+    </div>
+    <div class="wordmark serif" id="wordmark" aria-hidden="true">Gecko</div>
+    <div class="legal"><span>Built for the Meta Global AI Developer Hackathon.</span><span>Gecko eats bugs.</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var desktop = window.matchMedia("(min-width: 901px)");
+  function $(id) { return document.getElementById(id); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  /* ---------- hero conversation ---------- */
+  var scenes = {
+    fixed: {
+      user: "Deleting “Book flights” in the Active view removes “Buy milk” instead.", issue: "Issue #12",
+      working: "<b>On it.</b> Watching the recording, replaying it in a real browser, and writing a test that fails the same way.",
+      done: "<b>Caught it.</b> A test that fails on <code>main</code>, and a fix by Muse Code that passes it, with the suite still green.",
+      res: ['<span class="c-ok">● reproduced, 1 attempt</span>', '<span class="c-ok">● fixed, 1 round</span>', '<span class="c-ok">● 139 s</span>'],
+      hour: "hour-dawn", live: "run · 139 s"
+    },
+    declined: {
+      user: "A task I add disappears after I reload the page.", issue: "Issue #15",
+      working: "<b>On it.</b> Watching the recording, replaying it in a real browser, and writing a test that fails the same way.",
+      done: "<b>Couldn't reproduce this one.</b> The task was still there after reload, in the video and in 3 replays. A recording that starts from a fresh page load helps.",
+      res: ['<span class="c-no">● not reproduced, 3 attempts</span>', '<span class="c-no">● no PR opened</span>'],
+      hour: "hour-night", live: "run · 185 s"
+    }
+  };
+  var scene = $("scene"), mu = $("m-user"), mb = $("m-bot"), bt = $("b-text"), br = $("b-res");
+  var buttons = document.querySelectorAll(".toggle button");
+  var timers = [];
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function play(key) {
+    timers.forEach(clearTimeout); timers = [];
+    var s = scenes[key];
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.s === key)); });
+    scene.classList.remove("hour-dawn", "hour-night"); scene.classList.add(s.hour);
+    $("live-n").textContent = s.live;
+    if (reduce) {
+      $("u-who").textContent = s.issue; $("u-text").textContent = s.user; bt.innerHTML = s.done; br.innerHTML = s.res.join(""); br.classList.add("show");
+      mu.classList.add("in"); mb.classList.add("in"); return;
+    }
+    mu.classList.remove("in"); mb.classList.remove("in"); br.classList.remove("show");
+    later(function () { $("u-who").textContent = s.issue; $("u-text").textContent = s.user; mu.classList.add("in"); }, 350);
+    later(function () { bt.innerHTML = '<span class="typing"><b></b><b></b><b></b></span>'; br.innerHTML = ""; mb.classList.add("in"); }, 1300);
+    later(function () { bt.innerHTML = s.working; }, 2300);
+    later(function () { bt.style.opacity = 0; }, 4600);
+    later(function () { bt.innerHTML = s.done; bt.style.opacity = 1; br.innerHTML = s.res.join(""); br.classList.add("show"); }, 4950);
+  }
+  buttons.forEach(function (b) { b.addEventListener("click", function () { play(b.dataset.s); }); });
+  play("fixed");
+
+  /* ---------- word scrub ---------- */
+  var scrubs = [];
+  document.querySelectorAll(".scrub").forEach(function (h) {
+    var words = h.textContent.trim().split(/\s+/);
+    h.innerHTML = words.map(function (w) { return '<span class="w">' + w + '</span>'; }).join(" ");
+    scrubs.push(h);
+  });
+
+  /* ---------- reveal ---------- */
+  var items = document.querySelectorAll(".rv");
+  var yml = $("yml");
+  if ("IntersectionObserver" in window && !reduce) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.classList.add("in");
+        if (e.target.dataset && e.target.querySelector && e.target.querySelector("[data-count]")) count(e.target.querySelector("[data-count]"));
+        io.unobserve(e.target);
+      });
+    }, { threshold: 0.15 });
+    items.forEach(function (el, i) { el.style.transitionDelay = (i % 4) * 80 + "ms"; io.observe(el); });
+  } else {
+    items.forEach(function (el) { el.classList.add("in"); });
+    document.querySelectorAll("[data-count]").forEach(function (b) { count(b, true); });
+  }
+  yml.querySelectorAll(".ln").forEach(function (l, i) { l.style.transitionDelay = (300 + i * 110) + "ms"; });
+
+  /* ---------- count-up stats ---------- */
+  function fmt(el, v) {
+    var dec = +(el.dataset.dec || 0);
+    var n = dec ? v.toFixed(dec) : Math.round(v);
+    if (el.dataset.fmt === "of4") return n + " of 4";
+    return (el.dataset.prefix || "") + n + (el.dataset.suffix || "");
+  }
+  function count(el, instant) {
+    var to = parseFloat(el.dataset.count), t0 = null, dur = 1400;
+    if (instant || reduce) { el.textContent = fmt(el, to); return; }
+    function step(t) {
+      if (!t0) t0 = t;
+      var p = clamp((t - t0) / dur, 0, 1), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(el, to * e);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* ---------- pinned pipeline ---------- */
+  var pipe = $("pipe"), steps = pipe.querySelectorAll(".steps-list li"), panels = pipe.querySelectorAll(".panel");
+  var active = -1;
+  function setStep(i) {
+    if (i === active) return;
+    active = i;
+    steps.forEach(function (li, k) { li.classList.toggle("on", k === i); });
+    panels.forEach(function (p, k) { p.classList.toggle("on", k === i); });
+  }
+  steps.forEach(function (li, k) {
+    li.addEventListener("click", function () {
+      if (!desktop.matches) return;
+      var top = pipe.getBoundingClientRect().top + window.scrollY;
+      var span = pipe.offsetHeight - window.innerHeight;
+      window.scrollTo({ top: top + span * (k + 0.5) / steps.length, behavior: reduce ? "auto" : "smooth" });
+    });
+  });
+  function layoutPipe() {
+    if (!desktop.matches) { panels.forEach(function (p) { p.classList.add("on"); }); steps.forEach(function (li) { li.classList.add("on"); }); active = -1; return false; }
+    return true;
+  }
+  // on small screens each panel gets its own window
+  function mobilePanels() {
+    var stage = pipe.querySelector(".pipe-stage");
+    if (!desktop.matches && !stage.dataset.split) {
+      stage.dataset.split = "1";
+      var bg = stage.querySelector(".win");
+      panels.forEach(function (p) {
+        var slot = document.createElement("div"); slot.className = "slot";
+        var w = bg.cloneNode(true); w.style.position = "absolute";
+        slot.appendChild(w); p.parentNode.insertBefore(slot, p); slot.appendChild(p);
+      });
+      bg.style.display = "none";
+    }
+  }
+  mobilePanels(); layoutPipe();
+
+  /* ---------- run playback ---------- */
+  var RUN = 139; // seconds
+  var events = [
+    [0,   "Issue #12 opened with <b>recording.mov</b>. Gecko replies <b>On it.</b>", {}],
+    [9,   "Narration transcribed. 12 frames tiled on 3 contact sheets.", { cost: 0.004 }],
+    [24,  "Plan: open the app, switch to Active, delete <b>Book flights</b>. Bug frame: f11.", { cost: 0.031 }],
+    [38,  "SAM: the × under the cursor is the <b>2nd of 2</b>. Matches the row description.", { cost: 0.039 }],
+    [55,  "Replay in Chrome. Test fails on an assertion: <b>Buy milk</b> not visible.", { att: 1, cost: 0.052 }],
+    [63,  "Replay screen matches the video's bug frame. <b>Reproduced.</b>", { cost: 0.071, v: "Reproduced", m: 50 }],
+    [118, "Muse Code patch, round 1. New test passes. Test untouched. Suite green.", { rnd: 1, cost: 0.117, m: 85 }],
+    [139, "Two commits on <b>gecko/wrong-delete</b>. PR opened. <b>Caught it.</b>", { ref: "pass", v: "Caught it", m: 100 }]
+  ];
+  var log = $("log"), wave = $("wave"), player = $("player");
+  events.forEach(function (e) {
+    var li = document.createElement("li"); li.className = "hidden";
+    li.innerHTML = '<span class="ts">' + mmss(e[0]) + '</span><span>' + e[1] + '</span>';
+    log.appendChild(li);
+  });
+  var lis = log.querySelectorAll("li");
+  var N = 56, bars = [];
+  for (var i = 0; i < N; i++) {
+    var b = document.createElement("b");
+    var h = 18 + 70 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.43)) + (i % 5 === 0 ? 12 : 0);
+    b.style.height = Math.min(100, h) + "%"; wave.appendChild(b); bars.push(b);
+  }
+  function mmss(s) { s = Math.floor(s); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+  var runT = 0, playing = false, last = 0, SPEED = 9, started = false;
+  function renderRun() {
+    var p = runT / RUN;
+    $("p-bar").style.width = (p * 100) + "%";
+    $("p-t").textContent = mmss(runT); $("p-clock").textContent = mmss(runT);
+    var cur = Math.floor(p * N);
+    bars.forEach(function (b, k) { b.className = k < cur ? "done" : (k === cur && playing ? "now" : ""); });
+    var st = { att: 0, rnd: 0, cost: 0, ref: "waiting", v: "Watching…", m: 10 };
+    var shown = 0;
+    events.forEach(function (e, k) {
+      var on = runT >= e[0];
+      lis[k].className = on ? "done" : "hidden";
+      if (on) { shown = k; for (var key in e[2]) st[key] = e[2][key]; }
+    });
+    if (runT > 0 || started) lis[shown].className = "cur";
+    $("e-att").textContent = st.att; $("e-rnd").textContent = st.rnd;
+    $("e-cost").textContent = "$" + st.cost.toFixed(3); $("e-ref").textContent = st.ref;
+    $("e-v").textContent = st.v; $("e-m").style.width = st.m + "%";
+    $("e-v").style.color = st.v === "Caught it" ? "var(--ok)" : "";
+  }
+  function frame(t) {
+    if (!playing) return;
+    var dt = last ? (t - last) / 1000 : 0; last = t;
+    runT = Math.min(RUN, runT + dt * SPEED);
+    renderRun();
+    if (runT >= RUN) { setPlaying(false); return; }
+    requestAnimationFrame(frame);
+  }
+  function setPlaying(on) {
+    playing = on; player.classList.toggle("playing", on);
+    $("p-ic").innerHTML = on ? '<rect x="2.5" y="1.5" width="2.5" height="9" fill="currentColor"/><rect x="7" y="1.5" width="2.5" height="9" fill="currentColor"/>' : '<path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/>';
+    $("p-btn").setAttribute("aria-label", on ? "Pause run" : "Play run");
+    if (on) { started = true; last = 0; requestAnimationFrame(frame); }
+  }
+  $("p-btn").addEventListener("click", function () {
+    if (!playing && runT >= RUN) runT = 0;
+    setPlaying(!playing);
+  });
+  player.querySelector(".track").addEventListener("click", function (ev) {
+    var r = this.getBoundingClientRect(); runT = clamp((ev.clientX - r.left) / r.width, 0, 1) * RUN; started = true; renderRun();
+  });
+  renderRun();
+  if (reduce) { runT = RUN; started = true; renderRun(); }
+  else if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es, obs) {
+      if (es[0].isIntersecting && !started) { setPlaying(true); obs.disconnect(); }
+    }, { threshold: 0.25 }).observe($("runwin"));
+  }
+
+  /* ---------- guarantees tabs (autoplay) ---------- */
+  var tabs = document.querySelectorAll(".tabs button"), quotes = document.querySelectorAll("#stmt blockquote");
+  var tab = 0, tabT0 = 0, TAB_MS = 6500, tabsVisible = false, paused = false;
+  function setTab(i) {
+    tab = i; tabT0 = performance.now();
+    tabs.forEach(function (b, k) { b.setAttribute("aria-selected", String(k === i)); b.querySelector(".pb").style.width = "0"; });
+    quotes.forEach(function (q, k) { q.classList.toggle("on", k === i); });
+  }
+  tabs.forEach(function (b, k) { b.addEventListener("click", function () { setTab(k); }); });
+  var trustSec = $("trust");
+  trustSec.addEventListener("mouseenter", function () { paused = true; });
+  trustSec.addEventListener("mouseleave", function () { paused = false; tabT0 = performance.now() - parseFloat(tabs[tab].querySelector(".pb").style.width || 0) / 100 * TAB_MS; });
+  if ("IntersectionObserver" in window && !reduce) {
+    new IntersectionObserver(function (es) { tabsVisible = es[0].isIntersecting; if (tabsVisible) tabT0 = performance.now(); }, { threshold: 0.3 }).observe(trustSec);
+    (function tabLoop(t) {
+      if (tabsVisible && !paused) {
+        var p = (t - tabT0) / TAB_MS;
+        tabs[tab].querySelector(".pb").style.width = clamp(p * 100, 0, 100) + "%";
+        if (p >= 1) setTab((tab + 1) % tabs.length);
+      }
+      requestAnimationFrame(tabLoop);
+    })(performance.now());
+  }
+
+  /* ---------- stars ---------- */
+  var stars = $("stars");
+  for (var s = 0; s < 90; s++) {
+    var st = document.createElement("i");
+    var r = (s * 9301 + 49297) % 233280 / 233280, r2 = (s * 4567 + 1234) % 9973 / 9973;
+    st.style.left = (r * 100) + "%"; st.style.top = (r2 * 100) + "%";
+    st.style.animationDelay = (r * 3).toFixed(2) + "s";
+    st.style.opacity = (0.35 + r2 * 0.6).toFixed(2);
+    if (s % 11 === 0) { st.style.width = st.style.height = "3px"; }
+    stars.appendChild(st);
+  }
+
+  /* ---------- scroll-driven: hero clip, parallax, scrub, pipeline, wordmark ---------- */
+  var heroWin = scene, wins = document.querySelectorAll(".win"), wm = $("wordmark");
+  var ticking = false;
+  function onScroll() {
+    ticking = false;
+    var vh = window.innerHeight, y = window.scrollY;
+
+    // hero window opens from framed to full bleed
+    var hp = reduce ? 0 : clamp(y / Math.max(1, heroWin.offsetTop - 60), 0, 1);
+    var gutter = Math.max(14, window.innerWidth * 0.02);
+    heroWin.style.setProperty("--ix", (gutter * (1 - hp)).toFixed(1) + "px");
+    heroWin.style.setProperty("--ir", (28 * (1 - hp)).toFixed(1) + "px");
+
+    if (!reduce) {
+      wins.forEach(function (w) {
+        var r = w.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > vh) return;
+        var d = r.top + r.height / 2 - vh / 2;
+        w.querySelectorAll("[data-par]").forEach(function (el) {
+          el.style.transform = "translate3d(0," + (d * parseFloat(el.dataset.par)).toFixed(1) + "px,0)";
+        });
+      });
+      scrubs.forEach(function (h) {
+        var r = h.getBoundingClientRect();
+        var p = clamp((vh * 0.88 - r.top) / (vh * 0.5), 0, 1);
+        var ws = h.querySelectorAll(".w"), n = ws.length;
+        ws.forEach(function (w, k) { w.style.opacity = (0.14 + 0.86 * clamp(p * n - k, 0, 1)).toFixed(2); });
+      });
+      var fr = wm.getBoundingClientRect();
+      wm.style.setProperty("--wy", (clamp((fr.top - vh * 0.55) / vh, 0, 0.4) * 100).toFixed(1) + "%");
+    }
+
+    if (layoutPipe()) {
+      var pr = pipe.getBoundingClientRect();
+      var span = pipe.offsetHeight - vh;
+      var p = clamp(-pr.top / span, 0, 0.9999);
+      var n = steps.length, idx = Math.floor(p * n), local = p * n - idx;
+      setStep(idx);
+      steps.forEach(function (li, k) {
+        li.querySelector(".bar").style.width = (k < idx ? 100 : k === idx ? local * 100 : 0) + "%";
+      });
+    }
+  }
+  window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+  window.addEventListener("resize", function () { mobilePanels(); onScroll(); });
+  onScroll();
+})();
+</script>
+</body>
+</html>

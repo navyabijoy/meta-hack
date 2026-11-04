@@ -283,6 +283,11 @@ def files(path: str):
     return FileResponse(p)
 
 
+@app.get("/welcome", response_class=HTMLResponse)
+def landing():
+    return (WEB / "landing.html").read_text()
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/ops", response_class=HTMLResponse)
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
