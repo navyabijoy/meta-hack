@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gecko · Workspace</title>
+<link rel="icon" type="image/png" href="/static/brand/logo-64.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f4ef; --bg-2: #efece5; --panel: #fbfaf7; --ink: #1c1917; --muted: #78716c; --faint: #a8a29e; --line: #e4e0d8;
+  --card: #1c1917; --card-ink: #fafaf9;
+  --red: #ef4444; --ok: #16a34a; --ok-soft: #e6f4ea; --warn: #b45309; --warn-soft: #fbf0dc; --bad: #dc2626; --bad-soft: #fceaea;
+  --live: #2563eb; --live-soft: #e8effd; --quiet-soft: #ece9e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0d0c; --bg-2: #171412; --panel: #151210; --ink: #f5f3ee; --muted: #a8a29e; --faint: #78716c; --line: #272320;
+    --card: #fafaf9; --card-ink: #1c1917;
+    --ok: #4ade80; --ok-soft: #12261a; --warn: #fbbf24; --warn-soft: #2a2010; --bad: #f87171; --bad-soft: #2a1414;
+    --live: #60a5fa; --live-soft: #172554; --quiet-soft: #211d1a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.serif { font-family: Fraunces, Georgia, serif; font-optical-sizing: auto; font-weight: 400; letter-spacing: -0.02em; }
+:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; border-radius: 6px; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 max(20px, 3vw); }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 500 11px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent); }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 28px; padding: 14px max(16px, 3vw);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid transparent; }
+.nav .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
+.nav .brand img { border-radius: 6px; display: block; }
+.nav .links { display: flex; gap: 24px; margin-left: 28px; font-size: 14px; color: var(--muted); }
+.nav .links a:hover, .nav .links a[aria-current] { color: var(--ink); }
+.nav .sp { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 500; border: 0; cursor: pointer; transition: transform .2s, opacity .2s; }
+.pill:hover { transform: translateY(-1px); opacity: .9; }
+.pill.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.pill.small { padding: 6px 13px; font-size: 13px; }
+.pill[disabled] { opacity: .5; cursor: default; transform: none; }
+.who { font-size: 13px; color: var(--muted); display: none; }
+
+/* head */
+.head { padding: 44px 0 26px; display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.head h1 { margin: 10px 0 0; font-size: clamp(34px, 5vw, 52px); line-height: 1.05; }
+.head .sp { flex: 1; }
+.select { appearance: none; border: 1px solid var(--line); background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%2378716c' stroke-width='1.6'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;
+  border-radius: 999px; padding: 9px 36px 9px 16px; font-size: 14px; cursor: pointer; max-width: 300px; }
+
+/* impact */
+.impact { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 20px; background: var(--panel); overflow: hidden; }
+.stat { padding: 22px 24px 20px; border-right: 1px solid var(--line); min-width: 0; }
+.stat:last-child { border-right: 0; }
+.stat .v { font-size: clamp(34px, 4.4vw, 46px); line-height: 1.05; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: .45em; color: var(--muted); font-family: Inter, sans-serif; letter-spacing: 0; margin-left: 4px; }
+.stat .s { color: var(--muted); font-size: 13px; }
+.foot { color: var(--faint); font-size: 12.5px; margin: 10px 4px 0; }
+
+/* layout */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; padding: 36px 0 90px; align-items: start; }
+.sec-h { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.sec-h h2 { margin: 0; font-size: 26px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 13px; font-size: 13px; color: var(--muted); cursor: pointer; display: inline-flex; gap: 7px; align-items: center; }
+.chip b { font: 500 11.5px "JetBrains Mono", monospace; color: var(--faint); font-weight: 500; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip[aria-pressed="true"] b { color: color-mix(in srgb, var(--bg) 60%, transparent); }
+
+/* bug rows */
+.list { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); overflow: hidden; }
+.row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 18px; padding: 18px 22px; border-bottom: 1px solid var(--line); transition: background .15s; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.row .t { font-weight: 500; font-size: 16px; letter-spacing: -0.005em; display: inline; }
+.row .t::after { content: ""; position: absolute; inset: 0; }
+.row .meta { color: var(--muted); font-size: 13px; margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row .meta i { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); display: inline-block; }
+.row .why { color: var(--muted); font-size: 13.5px; margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 60ch; }
+.row .right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; position: relative; z-index: 1; }
+.row .time { font: 500 12.5px "JetBrains Mono", monospace; color: var(--muted); }
+.acts { display: flex; gap: 8px; align-items: center; }
+.link { font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.link:hover { color: var(--ink); border-color: var(--faint); }
+.st { display: inline-flex; align-items: center; gap: 7px; padding: 3px 11px 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.st::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st.ok { background: var(--ok-soft); color: var(--ok); }
+.st.warn { background: var(--warn-soft); color: var(--warn); }
+.st.bad { background: var(--bad-soft); color: var(--bad); }
+.st.quiet { background: var(--quiet-soft); color: var(--muted); }
+.st.wait { background: var(--quiet-soft); color: var(--muted); }
+.st.live { background: var(--live-soft); color: var(--live); }
+.st.live::before { animation: blink 1.3s infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+.prog { display: flex; gap: 4px; margin-top: 10px; max-width: 300px; }
+.prog span { height: 4px; flex: 1; border-radius: 2px; background: var(--line); }
+.prog span.on { background: var(--live); }
+.prog span.now { background: var(--live); animation: blink 1.3s infinite; }
+.stagetxt { font-size: 13px; color: var(--live); margin-top: 6px; }
+
+.empty { padding: 56px 28px; text-align: center; color: var(--muted); }
+.empty h3 { margin: 0 0 8px; font-size: 24px; color: var(--ink); }
+.empty p { margin: 0 auto 18px; max-width: 420px; }
+
+/* side cards */
+.side { display: flex; flex-direction: column; gap: 18px; position: sticky; top: 84px; }
+.card { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); padding: 20px; }
+.card h3 { margin: 0 0 4px; font-size: 20px; }
+.card .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.dark { background: var(--card); color: var(--card-ink); border-color: transparent; box-shadow: 0 24px 60px -30px rgba(0,0,0,.45); }
+.dark .who2 { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: .6; margin-bottom: 8px; }
+.dark .who2 i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.dark p { margin: 0; font-size: 15px; line-height: 1.5; }
+.dark .res { display: flex; gap: 14px; flex-wrap: wrap; font: 12px "JetBrains Mono", monospace; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--card-ink) 16%, transparent); }
+.dark a.l { text-decoration: underline; text-underline-offset: 3px; }
+.repo { padding: 14px 0; border-top: 1px solid var(--line); }
+.repo:first-of-type { border-top: 0; padding-top: 0; }
+.repo .n { font: 500 13.5px "JetBrains Mono", monospace; word-break: break-all; }
+.repo .setup { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; margin: 6px 0 10px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.dot.off { background: var(--warn); }
+.linkbox { display: flex; gap: 8px; }
+.linkbox input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 8px 10px; font: 12.5px "JetBrains Mono", monospace; }
+.sw { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.switch { position: relative; width: 38px; height: 22px; border-radius: 999px; background: var(--line); border: 0; cursor: pointer; transition: background .2s; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--ok); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); }
+.meter { height: 5px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.use { font-size: 12.5px; color: var(--muted); margin-top: 12px; display: flex; justify-content: space-between; }
+.drop { display: block; border: 1.5px dashed var(--line); border-radius: 14px; padding: 18px; text-align: center; color: var(--muted); font-size: 13.5px; cursor: pointer; transition: border-color .2s, background .2s; }
+.drop:hover, .drop.has { border-color: var(--faint); background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.note { font-size: 13px; margin-top: 10px; min-height: 1.4em; color: var(--muted); }
+.note.bad { color: var(--bad); }
+
+.steps { text-align: left; max-width: 380px; margin: 22px auto 24px; padding: 0; list-style: none; counter-reset: s; }
+.steps li { counter-increment: s; display: flex; gap: 12px; padding: 8px 0; color: var(--ink); }
+.steps li::before { content: counter(s); flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font: 500 12px "JetBrains Mono", monospace; color: var(--muted); }
+.sk { height: 74px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 4%, transparent), transparent); background-size: 200% 100%; animation: sh 1.4s infinite; }
+@keyframes sh { to { background-position: -200% 0; } }
+
+@media (max-width: 980px) {
+  .main { grid-template-columns: 1fr; }
+  .side { position: static; }
+  .impact { grid-template-columns: repeat(2, 1fr); }
+  .stat:nth-child(2) { border-right: 0; }
+  .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .nav .links { display: none; }
+}
+@media (max-width: 560px) { .row { grid-template-columns: 1fr; } .row .right { align-items: flex-start; flex-direction: row; flex-wrap: wrap; } .chips { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="nav">
+  <a href="/welcome" class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</a>
+  <nav class="links" aria-label="Main"><a href="/workspace" aria-current="page">Workspace</a><a href="/welcome#how">How it works</a><a href="/welcome#setup">Setup</a></nav>
+  <div class="sp"></div>
+  <span class="who" id="who"></span>
+  <a class="pill ghost small" id="addRepo" href="/github/setup">Add a repo</a>
+</header>
+
+<main class="wrap">
+  <section class="head">
+    <div><span class="eyebrow"><i></i>Workspace</span><h1 class="serif" id="title">Bugs Gecko is on</h1></div>
+    <div class="sp"></div>
+    <select class="select" id="repoSel" aria-label="Repository"></select>
+  </section>
+
+  <section aria-label="Impact" id="impactWrap">
+    <div class="impact" id="impact"></div>
+    <p class="foot" id="impactFoot"></p>
+  </section>
+
+  <div class="main" id="mainGrid">
+    <section aria-labelledby="bugsH">
+      <div class="sec-h"><h2 class="serif" id="bugsH">Bugs</h2><div class="chips" id="chips" role="group" aria-label="Filter bugs"></div></div>
+      <div class="list" id="list"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+    </section>
+    <aside class="side" aria-label="Repositories and tools">
+      <div id="latest"></div>
+      <div class="card" id="repos"></div>
+      <div class="card" id="try">
+        <h3 class="serif">Try it with a recording</h3>
+        <p class="sub">Drop any screen recording of a bug in your app. Gecko reproduces it and shows what it found.</p>
+        <label class="drop" id="drop"><input type="file" id="file" accept="video/mp4,video/quicktime,video/*" hidden><span id="dropText">Choose a video, or drop it here</span></label>
+        <button class="pill small" id="go" style="margin-top:12px" disabled>Reproduce it</button>
+        <div class="note" id="tryNote" role="status"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+<script src="/static/workspace.js"></script>
+</body>
+</html>

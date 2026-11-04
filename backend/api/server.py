@@ -283,6 +283,18 @@ def files(path: str):
     return FileResponse(p)
 
 
+@app.get("/workspace", response_class=HTMLResponse)
+def workspace_page():
+    return (WEB / "workspace.html").read_text()
+
+
+@app.get("/api/workspace/me")
+def ws_me():
+    slug = github_app.env("GITHUB_APP_SLUG")
+    return {"login": None, "app_slug": slug,
+            "install_url": f"https://github.com/apps/{slug}/installations/new" if slug else None}
+
+
 @app.get("/welcome", response_class=HTMLResponse)
 def landing():
     return (WEB / "landing.html").read_text()

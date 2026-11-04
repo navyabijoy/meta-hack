@@ -178,6 +178,22 @@ def bugs(repo: str | None = None, include_eval: bool = False) -> list[dict]:
     return out
 
 
+def _stage(run_id: str) -> str | None:
+    """The stage a running bug is in, from its last 'stage start' event."""
+    f = RUNS / run_id / "events.jsonl"
+    if not f.exists():
+        return None
+    stage = None
+    for line in f.read_text().splitlines()[-40:]:
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if e.get("kind") == "stage" and e.get("status") == "start" and e.get("stage") != "workspace":
+            stage = e["stage"]
+    return stage
+
+
 def _bug(run_id: str, job: dict | None) -> dict:
     d = RUNS / run_id
     s = json.loads((d / "summary.json").read_text()) if (d / "summary.json").exists() else {}
@@ -197,6 +213,7 @@ def _bug(run_id: str, job: dict | None) -> dict:
         "pr_state": pr_state(s.get("pr_url")),
         "expected": plan.get("expected"),
         "actual": plan.get("actual"),
+        "stage": _stage(run_id) if status in ("running",) else None,
         "created": (job or {}).get("created") or d.stat().st_ctime,
         "seconds": s.get("seconds"),
         "why": s.get("reproduce_why") if status == "not-reproduced" else s.get("error"),
