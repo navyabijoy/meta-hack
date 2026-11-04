@@ -121,17 +121,6 @@ h1 em { font-style: italic; color: var(--red); }
 .toggle button { border: 0; cursor: pointer; padding: 8px 16px; border-radius: 999px; font: 500 13px Inter, sans-serif; background: transparent; color: rgba(255,255,255,.75); transition: background .2s, color .2s; }
 .toggle button[aria-pressed="true"] { background: rgba(255,255,255,.95); color: #1c1917; }
 
-/* marquee */
-.marquee-sec { padding: 64px 0 24px; text-align: center; }
-.marquee-sec p { margin: 0 0 26px; font-size: 13px; color: var(--faint); }
-.marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
-.marquee .track { display: flex; gap: 64px; width: max-content; animation: slide 36s linear infinite; }
-.marquee:hover .track { animation-play-state: paused; }
-.marquee span { font-size: 24px; color: var(--faint); white-space: nowrap; transition: color .3s; }
-.marquee span:hover { color: var(--ink); }
-.marquee span.m { font: 500 17px "JetBrains Mono", monospace; letter-spacing: .04em; padding-top: 5px; }
-@keyframes slide { to { transform: translateX(-50%); } }
-
 /* word scrub heading */
 .intro { padding: 110px 0 40px; text-align: center; }
 .intro h2 { font-size: clamp(34px, 5.6vw, 64px); line-height: 1.08; margin: 18px auto 0; max-width: 900px; }
@@ -264,6 +253,8 @@ pre.code .k { color: #c4b5fd; } pre.code .s { color: #fdba74; } pre.code .c { co
 .stat b { display: block; font-size: clamp(38px, 5vw, 58px); line-height: 1.1; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
 .stat span.l { color: var(--muted); font-size: 14px; }
 
+.foot-note { max-width: 640px; margin: 22px 0 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+
 /* guarantees (tabbed, autoplay) */
 .trust { padding: 100px 0 120px; }
 .trust-grid { display: grid; grid-template-columns: 1fr 340px; gap: clamp(28px, 6vw, 90px); align-items: start; margin-top: 30px; }
@@ -364,7 +355,7 @@ footer { padding: 70px 0 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rv, .line > span, .fade-up { opacity: 1; transform: none; transition: none; animation: none; }
-  .marquee .track, .live i, .stars i, .typing b { animation: none; }
+  .live i, .stars i, .typing b { animation: none; }
   .msg, .panel, .win, .win svg.land path { transition: none; }
   .scrub .w { opacity: 1; }
 }
@@ -381,7 +372,7 @@ footer { padding: 70px 0 0; overflow: hidden; }
 
 <!-- HERO -->
 <section class="hero">
-  <span class="badge mono fade-up d0"><i></i>New: 4 of 4 on the eval</span>
+  <span class="badge mono fade-up d0"><i></i>Works from a plain screen recording</span>
   <h1 class="serif" aria-label="Send a video. Get a fix."><span class="line"><span>Send a video.</span></span><span class="line"><span>Get a <em>fix</em>.</span></span></h1>
   <p class="sub fade-up">Gecko watches a screen recording of a bug, reproduces it in a real browser, and opens a pull request that proves it and fixes it.</p>
   <div class="cta fade-up d2">
@@ -414,17 +405,6 @@ footer { padding: 70px 0 0; overflow: hidden; }
   <div class="toggle" role="group" aria-label="Choose an outcome">
     <button type="button" data-s="fixed" aria-pressed="true">Caught it</button>
     <button type="button" data-s="declined" aria-pressed="false">Couldn't reproduce</button>
-  </div>
-</section>
-
-<!-- MARQUEE -->
-<section class="marquee-sec">
-  <p class="rv">Built on Meta's models and a real browser</p>
-  <div class="marquee rv" aria-label="Muse Spark, SAM 3.1, Muse Voice Transcribe, Muse Code, Playwright, Chrome, GitHub">
-    <div class="track" aria-hidden="true">
-      <span class="serif">Muse Spark</span><span class="m">SAM 3.1</span><span class="serif"><i>Muse Voice</i></span><span class="m">MUSE CODE</span><span class="serif">Playwright</span><span class="m">CHROME</span><span class="serif">GitHub App</span>
-      <span class="serif">Muse Spark</span><span class="m">SAM 3.1</span><span class="serif"><i>Muse Voice</i></span><span class="m">MUSE CODE</span><span class="serif">Playwright</span><span class="m">CHROME</span><span class="serif">GitHub App</span>
-    </div>
   </div>
 </section>
 
@@ -568,10 +548,11 @@ footer { padding: 70px 0 0; overflow: hidden; }
   <h2 class="serif big rv">The back-and-forth, gone.</h2>
   <div class="stats">
     <div class="stat rv"><span class="was">"can you send repro steps?"</span><b class="serif" data-count="139" data-suffix=" s">0 s</b><span class="l">Median time, video to verified fix</span></div>
-    <div class="stat rv"><span class="was"></span><b class="serif" data-count="4" data-fmt="of4">0 of 4</b><span class="l">Eval bugs handled correctly</span></div>
+    <div class="stat rv"><span class="was"></span><b class="serif" data-count="0">0</b><span class="l">SDKs or extensions to install</span></div>
     <div class="stat rv"><span class="was"></span><b class="serif" data-count="0.117" data-prefix="$" data-dec="3">$0.000</b><span class="l">Median Meta API cost per run</span></div>
     <div class="stat rv"><span class="was"></span><b class="serif" data-count="0">0</b><span class="l">Guess PRs opened</span></div>
   </div>
+  <p class="foot-note rv">From our eval: four bug recordings against a demo app. Three were real bugs, and Gecko fixed each one and passed a hidden reference test it never sees. The fourth was not a bug, and Gecko correctly declined to open a PR. Medians are over those runs.</p>
 </section>
 
 <!-- GUARANTEES -->
