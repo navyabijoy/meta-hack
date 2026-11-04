@@ -187,8 +187,17 @@ function renderSources() {
 
 function renderLatest() {
   const b = state.bugs.find((x) => x.status === 'fixed')
+  const proof = [
+    'Reproduced in a real browser',
+    'Failing test that matches the video',
+    'Fix by Muse Code that passes it',
+    'Rest of the suite still green',
+  ]
+  const who = [b.reporter ? esc(b.reporter) : VIA[b.origin] && esc(VIA[b.origin]), b.repo && esc(repoName(b.repo))].filter(Boolean).join(' · ')
   $('#latest').innerHTML = !b ? '' : `<div class="card dark"><div class="who"><i></i>gecko · ${ago(b.created)}</div>
     <p><b>Caught it.</b> ${esc(b.title)}</p>
+    ${who ? `<div class="meta">${who}</div>` : ''}
+    <ul class="proof">${proof.map((x) => `<li>${x}</li>`).join('')}</ul>
     <div class="res"><span>${mins(b.seconds)} min to a fix</span>${b.pr_url ? `<a href="${esc(b.pr_url)}" target="_blank" rel="noopener">View PR${b.pr_state ? ' · ' + esc(b.pr_state) : ''}</a>` : `<a href="/runs/${esc(b.id)}">See the proof</a>`}</div></div>`
 }
 
