@@ -28,6 +28,7 @@ API = "https://api.github.com"
 VIDEO_RE = re.compile(
     r"(https://github\.com/user-attachments/assets/[0-9a-f-]+|https?://\S+\.(?:mp4|mov|webm))", re.I)
 POLL_SECONDS = 15
+COMMAND_RE = re.compile(r"(?:^|\s)/(?:gecko|repro)(?=\s|$)", re.M)  # the command on its own, not inside a URL
 
 
 # ---------------------------------------------------------------- credentials
@@ -294,9 +295,9 @@ def poll_once(repos: set[str], queue_run, state: dict) -> None:
             if key in state["handled"]:
                 continue
             body = issue.get("body") or ""
-            wants = VIDEO_RE.search(body) or "/gecko" in body
+            wants = VIDEO_RE.search(body) or COMMAND_RE.search(body)
             if not wants and issue.get("comments"):
-                wants = any("/gecko" in (c.get("body") or "")
+                wants = any(COMMAND_RE.search(c.get("body") or "")
                             for c in repo.get(f"/issues/{issue['number']}/comments"))
             if not wants:
                 continue
@@ -312,12 +313,12 @@ def start_bot(repos: set[str], queue_run) -> None:
     """repos: GitHub "owner/name"s to serve (empty = every installed repo)."""
 
     def loop():
-        state = load_state()
         print(f"[bot] watching {sorted(repos) or 'all installed repos'} every {POLL_SECONDS}s")
         while True:
             try:
                 if configured():
-                    poll_once(repos, queue_run, state)
+                    # Reload each time: the report link also marks issues as handled.
+                    poll_once(repos, queue_run, load_state())
             except Exception as e:  # noqa: BLE001
                 print(f"[bot] poll error: {e}")
             time.sleep(POLL_SECONDS)

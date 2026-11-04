@@ -121,3 +121,11 @@ def test_repo_config_defaults_and_override(tmp_path):
     cfg = RepoConfig.load(tmp_path)
     assert cfg.start.format(port=1234) == "pnpm dev --port 1234"
     assert cfg.install == "npm ci"
+
+
+def test_bot_command_not_matched_inside_urls():
+    from backend.github_app import COMMAND_RE
+    assert COMMAND_RE.search("please /gecko this")
+    assert COMMAND_RE.search("/gecko")
+    assert not COMMAND_RE.search("https://raw.githubusercontent.com/o/r/gecko-evidence/x/report.gif")
+    assert not COMMAND_RE.search("see path a/gecko/b")
