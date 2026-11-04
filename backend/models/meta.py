@@ -32,7 +32,8 @@ _client: OpenAI | None = None
 def client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(base_url=BASE_URL, api_key=api_key())
+        # The SDK retries 429s and 5xx with exponential backoff and honours Retry-After.
+        _client = OpenAI(base_url=BASE_URL, api_key=api_key(), max_retries=5, timeout=180)
     return _client
 
 
@@ -115,6 +116,21 @@ def sam_video(video_path: str | Path, prompt: str, frame_count: int, **metadata:
 
 
 def _sam_stream(content: list[dict], **kw) -> str:
+    import random
+    import time
+
+    import openai
+
+    for i in range(5):
+        try:
+            return _sam_stream_once(content, **kw)
+        except (openai.RateLimitError, openai.APIConnectionError, openai.InternalServerError, openai.APITimeoutError):
+            if i == 4:
+                raise
+            time.sleep(0.5 * 2 ** i + random.random() * 0.5)
+
+
+def _sam_stream_once(content: list[dict], **kw) -> str:
     out: list[str] = []
     with client().responses.stream(
         model="sam-3.1",
@@ -134,6 +150,15 @@ def transcribe(wav_path: str | Path, mode: str = "ENDPOINTING") -> dict:
     budget.check(estimate_usd=0.01)
     import json
 
+    r = _retry(lambda: _post_transcribe(wav_path, mode))
+    data = r.json()
+    budget.record("muse-voice-transcribe-1.0", budget.transcribe_cost(data.get("audioDurationMs", 0) / 1000))
+    return data
+
+
+def _post_transcribe(wav_path, mode):
+    import json
+
     with Path(wav_path).open("rb") as f:
         r = httpx.post(
             f"{BASE_URL}/asr/transcribe",
@@ -145,6 +170,28 @@ def transcribe(wav_path: str | Path, mode: str = "ENDPOINTING") -> dict:
             timeout=120,
         )
     r.raise_for_status()
-    data = r.json()
-    budget.record("muse-voice-transcribe-1.0", budget.transcribe_cost(data.get("audioDurationMs", 0) / 1000))
-    return data
+    return r
+
+
+def _retry(fn, attempts: int = 5):
+    """Retry on rate limits, server errors and network failures, with jittered backoff."""
+    import random
+    import time
+
+    for i in range(attempts):
+        try:
+            return fn()
+        except (httpx.TransportError, httpx.HTTPStatusError) as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if isinstance(e, httpx.HTTPStatusError) and status not in (429, 500, 502, 503, 504):
+                raise
+            if i == attempts - 1:
+                raise
+            wait = 0.5 * 2 ** i + random.random() * 0.5
+            retry_after = getattr(getattr(e, "response", None), "headers", {}).get("retry-after")
+            if retry_after:
+                try:
+                    wait = max(wait, float(retry_after))
+                except ValueError:
+                    pass
+            time.sleep(wait)

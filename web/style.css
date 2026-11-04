@@ -54,7 +54,7 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
 .runs .meta { color: var(--faint); font-size: 12px; }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
-.pill.running { background: var(--accent-soft); color: var(--accent); }
+.pill.running, .pill.queued { background: var(--accent-soft); color: var(--accent); }
 .pill.fixed { background: var(--green-soft); color: var(--green); }
 .pill.reproduced { background: var(--amber-soft); color: var(--amber); }
 .pill.not-reproduced, .pill.error { background: var(--red-soft); color: var(--red); }

@@ -204,53 +204,69 @@ def download(url: str, dest: Path, token: str) -> Path:
     return dest
 
 
-def handle_issue(repo: Repo, issue: dict, local_repo: str, app_url: str, start_run) -> None:
-    from backend.pipeline import deliver
+def token_for(full_name: str) -> str | None:
+    for r in installed_repos():
+        if r.full_name == full_name:
+            return r.token
+    return None
 
+
+def repo_for(full_name: str) -> Repo | None:
+    return next((r for r in installed_repos() if r.full_name == full_name), None)
+
+
+def handle_issue(repo: Repo, issue: dict, queue_run) -> None:
     n = issue["number"]
     video = find_video(repo, issue)
     if not video:
+        repo.post(f"/issues/{n}/comments", {"body": "I need a screen recording to reproduce this. Attach an MP4 or MOV of the bug and comment `/repro`."})
         return
     comment = repo.post(f"/issues/{n}/comments", {"body": (
         "**Reproducing…** I'm watching the recording, replaying it in a real browser, and writing a test "
         "that fails the same way. I'll update this comment.")})
-
     run_id = time.strftime("%m%d-%H%M%S-") + f"i{n}"
     folder = ROOT / "runs" / run_id
     folder.mkdir(parents=True, exist_ok=True)
     path = download(video, folder / "input.mp4", repo.token)
     report = f"{issue['title']}\n\n{VIDEO_RE.sub('', issue.get('body') or '').strip()}"[:1500]
-
-    def done(summary: dict) -> None:
-        try:
-            if summary.get("status") == "fixed":
-                pr = deliver.open_pr(summary, folder, issue=n, token=repo.token)
-                summary["pr_url"] = pr
-                (folder / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
-                body = (f"**Reproduced and fixed.** {pr}\n\n"
-                        f"- Test that fails on `{summary.get('base')}`: `{summary.get('test_path')}`\n"
-                        f"- Fix by Muse Code, verified: the test passes and the suite is green\n\n"
-                        f"<sub>{round(summary.get('seconds') or 0)}s · Meta API ${summary.get('usd', 0):.2f}</sub>")
-            elif summary.get("status") == "reproduced":
-                body = (f"**Reproduced, but no verified fix yet.** The failing test is on branch "
-                        f"`{summary.get('branch')}`. Muse Code's attempts did not pass verification.")
-            elif summary.get("status") == "not-reproduced":
-                body = (f"**Could not reproduce.** {summary.get('reproduce_why', '')}\n\n"
-                        "I'd rather say so than open a guess. A recording that shows the steps from a fresh page load helps.")
-            else:
-                body = f"**Something went wrong on my side.** `{summary.get('error', 'unknown error')}`"
-        except Exception as e:  # noqa: BLE001
-            body = f"**Reproduced and fixed, but opening the PR failed.** `{e}`"
-        repo.patch(f"/issues/comments/{comment['id']}", {"body": body})
-
-    start_run(path, report, local_repo, app_url, run_id, {"on_done": done})
+    queue_run(path, report, repo.full_name, run_id, "github",
+              {"repo": repo.full_name, "issue": n, "comment_id": comment["id"]})
 
 
-def poll_once(local_repos: dict[str, tuple[str, str]], start_run, state: dict) -> None:
+def report(ctx: dict, summary: dict, run_dir: Path) -> None:
+    """Called when a run started from an issue finishes: open the PR, update the comment."""
+    from backend.pipeline import deliver
+
+    repo = repo_for(ctx["repo"])
+    if not repo:
+        return
+    status = summary.get("status")
+    try:
+        if status == "fixed":
+            pr = deliver.open_pr(summary, run_dir, issue=ctx["issue"], token=repo.token)
+            summary["pr_url"] = pr
+            (run_dir / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
+            body = (f"**Reproduced and fixed:** {pr}\n\n"
+                    f"- A test that fails on `{summary.get('base')}`: `{summary.get('test_path')}`\n"
+                    f"- A fix by Muse Code, verified: the test passes and the suite stays green\n\n"
+                    f"<sub>{round(summary.get('seconds') or 0)}s · Meta API ${summary.get('usd', 0):.2f}</sub>")
+        elif status == "reproduced":
+            body = (f"**Reproduced, but no verified fix yet.** The failing test is on branch "
+                    f"`{summary.get('branch')}`. Muse Code's attempts did not pass verification.")
+        elif status == "not-reproduced":
+            body = (f"**Could not reproduce.** {summary.get('reproduce_why', '')}\n\n"
+                    "I'd rather say so than open a guess. A recording that starts from a fresh page load helps.")
+        else:
+            body = f"**Something went wrong on my side.** `{summary.get('error', 'unknown error')}`"
+    except Exception as e:  # noqa: BLE001
+        body = f"**Reproduced and fixed, but opening the PR failed.** `{e}`"
+    repo.patch(f"/issues/comments/{ctx['comment_id']}", {"body": body})
+
+
+def poll_once(repos: set[str], queue_run, state: dict) -> None:
     for repo in installed_repos():
-        if repo.full_name not in local_repos:
+        if repos and repo.full_name not in repos:
             continue
-        local, url = local_repos[repo.full_name]
         for issue in repo.get("/issues", state="open", sort="created", direction="desc", per_page=20):
             if "pull_request" in issue:
                 continue
@@ -267,21 +283,21 @@ def poll_once(local_repos: dict[str, tuple[str, str]], start_run, state: dict) -
             state["handled"][key] = time.time()
             save_state(state)
             try:
-                handle_issue(repo, issue, local, url, start_run)
+                handle_issue(repo, issue, queue_run)
             except Exception as e:  # noqa: BLE001
                 print(f"[bot] {key} failed: {e}")
 
 
-def start_bot(local_repos: dict[str, tuple[str, str]], start_run) -> None:
-    """local_repos: {"owner/name": (local checkout path, running app URL)}"""
+def start_bot(repos: set[str], queue_run) -> None:
+    """repos: GitHub "owner/name"s to serve (empty = every installed repo)."""
 
     def loop():
         state = load_state()
-        print(f"[bot] watching {list(local_repos)} every {POLL_SECONDS}s")
+        print(f"[bot] watching {sorted(repos) or 'all installed repos'} every {POLL_SECONDS}s")
         while True:
             try:
                 if configured():
-                    poll_once(local_repos, start_run, state)
+                    poll_once(repos, queue_run, state)
             except Exception as e:  # noqa: BLE001
                 print(f"[bot] poll error: {e}")
             time.sleep(POLL_SECONDS)

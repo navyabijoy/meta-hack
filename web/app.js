@@ -60,7 +60,7 @@ async function homePage() {
   }
 }
 function toList(f) { const dt = new DataTransfer(); dt.items.add(f); return dt.files }
-function label(s) { return { running: 'Running', fixed: 'Fixed', reproduced: 'Reproduced', 'not-reproduced': 'Not reproduced', error: 'Error' }[s] || s }
+function label(s) { return { queued: 'Queued', running: 'Running', fixed: 'Fixed', reproduced: 'Reproduced', 'not-reproduced': 'Not reproduced', error: 'Error' }[s] || s }
 
 // ---------------------------------------------------------------- run page
 async function runPage(id) {

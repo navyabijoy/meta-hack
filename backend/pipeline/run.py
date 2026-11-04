@@ -28,12 +28,13 @@ AUTHOR = ["-c", "user.name=repro[bot]", "-c", "user.email=repro-bot@users.norepl
 
 
 class Events:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, run_id: str | None = None):
         self.path = path
+        self.run_id = run_id
         self.t0 = time.time()
 
     def __call__(self, kind: str, **data) -> None:
-        rec = {"t": round(time.time() - self.t0, 2), "kind": kind, "usd": round(budget.spent(), 4), **data}
+        rec = {"t": round(time.time() - self.t0, 2), "kind": kind, "usd": round(budget.spent(self.run_id), 4), **data}
         with self.path.open("a") as f:
             f.write(json.dumps(rec, default=str) + "\n")
         print(f"[{rec['t']:6.1f}s] {kind}", {k: v for k, v in data.items() if k in ("stage", "status", "why", "round", "accepted", "reproduced", "fixed", "summary")})
@@ -51,8 +52,9 @@ def run(video: str, source: str, report: str = "", run_id: str | None = None, *,
     run_id = run_id or time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     out = RUNS / run_id
     out.mkdir(parents=True, exist_ok=True)
-    emit = Events(out / "events.jsonl")
-    spend0 = budget.spent()
+    budget.set_run(run_id)
+    emit = Events(out / "events.jsonl", run_id)
+    spend0 = 0.0
     summary: dict = {"id": run_id, "video": str(Path(video).resolve()), "source": source,
                      "report": report, "status": "running"}
     ws: Workspace | None = None
@@ -143,7 +145,7 @@ def _boot(ws: Workspace, token: str | None, emit) -> Target:
 
 
 def _finish(summary: dict, out: Path, emit: Events, spend0: float) -> dict:
-    summary["usd"] = round(budget.spent() - spend0, 4)
+    summary["usd"] = round(budget.spent(emit.run_id) - spend0, 4)
     summary["seconds"] = round(time.time() - emit.t0, 1)
     (out / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
     emit("done", status=summary["status"], usd=summary["usd"])

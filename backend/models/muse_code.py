@@ -92,6 +92,7 @@ def _strip_local_links(text: str, workspace: Path) -> str:
     """Muse Code links files by absolute local path; keep the name, drop the machine path."""
     import re
 
-    root = str(Path(workspace).resolve())
-    text = re.sub(r"\[([^\]]+)\]\((/[^)]+)\)", lambda m: f"`{m.group(1)}`" if m.group(2).startswith("/") else m.group(0), text)
-    return text.replace(root + "/", "").replace(root, ".")
+    text = re.sub(r"\[([^\]]+)\]\((/[^)]+)\)", lambda m: f"`{m.group(1)}`", text)
+    for root in {str(Path(workspace)), str(Path(workspace).resolve())}:
+        text = text.replace(root + "/", "").replace(root, ".")
+    return text

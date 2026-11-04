@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 HARD_CAP_USD = float(os.environ.get("REPRO_BUDGET_USD", "100"))
+RUN_CAP_USD = float(os.environ.get("REPRO_RUN_BUDGET_USD", "3"))  # one run may not spend more
 WARN_AT_USD = HARD_CAP_USD * 0.8
 
 LEDGER = Path(__file__).resolve().parents[2] / "budget" / "ledger.jsonl"
@@ -32,13 +33,23 @@ SAM_MIN_VIDEO_FRAMES = 50
 TRANSCRIBE_PER_HOUR = 0.18
 
 _lock = threading.Lock()
+_current = threading.local()  # the run this thread is working on
+
+
+def set_run(run_id: str | None) -> None:
+    _current.run_id = run_id
+
+
+def current_run() -> str | None:
+    return getattr(_current, "run_id", None)
 
 
 class BudgetExceeded(RuntimeError):
     pass
 
 
-def spent() -> float:
+def spent(run_id: str | None = None) -> float:
+    """Total spend, or one run's spend."""
     if not LEDGER.exists():
         return 0.0
     total = 0.0
@@ -46,7 +57,9 @@ def spent() -> float:
         for line in f:
             line = line.strip()
             if line:
-                total += json.loads(line)["usd"]
+                rec = json.loads(line)
+                if run_id is None or rec.get("run") == run_id:
+                    total += rec["usd"]
     return total
 
 
@@ -56,13 +69,18 @@ def check(estimate_usd: float = 0.0) -> None:
         raise BudgetExceeded(
             f"Spend ${total:.2f} + estimate ${estimate_usd:.2f} would reach the ${HARD_CAP_USD:.0f} cap."
         )
+    run = current_run()
+    if run:
+        mine = spent(run)
+        if mine + estimate_usd >= RUN_CAP_USD:
+            raise BudgetExceeded(f"Run {run} spent ${mine:.2f}; the per-run cap is ${RUN_CAP_USD:.2f}.")
 
 
 def record(model: str, usd: float, **detail) -> float:
     LEDGER.parent.mkdir(parents=True, exist_ok=True)
     with _lock:
         with LEDGER.open("a") as f:
-            f.write(json.dumps({"t": time.time(), "model": model, "usd": usd, **detail}) + "\n")
+            f.write(json.dumps({"t": time.time(), "run": current_run(), "model": model, "usd": usd, **detail}) + "\n")
     total = spent()
     if total >= WARN_AT_USD:
         print(f"[budget] warning: ${total:.2f} of ${HARD_CAP_USD:.0f} spent")
