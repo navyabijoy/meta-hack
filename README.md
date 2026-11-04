@@ -6,7 +6,7 @@ Repro watches a plain screen recording of a web-app bug (no browser extension, n
 
 Every claim Repro makes is checked by running code. When it cannot reproduce a bug, it says so, with its evidence, instead of guessing.
 
-Built for the Meta Global AI Developer Hackathon (Indie track, *Push the Frontier*).
+Built for the Meta Global AI Developer Hackathon (Startup track, *Push the Frontier*).
 
 ## How it works
 
@@ -24,6 +24,37 @@ Built for the Meta Global AI Developer Hackathon (Indie track, *Push the Frontie
 
 Matching pixels in a video to elements in a live page normally needs the exact viewport, scale and scroll. Repro sidesteps that: SAM finds every instance of the clicked element's *kind* and the cursor tip, so Repro knows "the 2nd x icon from the top". The live page resolves the same ordinal among elements with the same name, and cross-checks it against the planner's description ("the x on the 'Book flights' row"). When both signals agree the step is marked high confidence.
 
+## Use it on your repo
+
+1. Install the GitHub App (`/github/setup` on your Repro server creates it; then install it on a repo).
+2. Add a `.repro.yml` to the repo, and let Playwright read its base URL from `REPRO_BASE_URL`:
+
+```yaml
+install: npm ci
+start: npx vite --port {port} --strictPort --host 127.0.0.1
+ready_path: /
+test: npx playwright test
+test_dir: tests/repro
+fresh_state: [localStorage]
+```
+
+3. Open an issue with a screen recording attached. `repro-bot` comments "Reproducing…", then edits the comment with the result and links the PR. Comment `/repro` on an older issue to trigger it.
+
+## Built for production
+
+- **Isolated runs.** Every run clones the repo into its own folder, installs from a lockfile-keyed cache (copy-on-write, so a warm install is near-instant), and starts the app on a free port. A developer's checkout is never touched, and runs don't share state.
+- **Durable queue.** Runs are rows in SQLite, claimed by `REPRO_WORKERS` workers (default 2). A run interrupted by a crash is re-queued once on restart; issue context is stored with the job, so the bot reports back even across restarts.
+- **Verification, not trust.** A run reports *reproduced* only when the test fails on an assertion **and** Muse Spark judges the replay's screen to match the video's bug frame. A fix is accepted only when the new test passes, the test file is byte-identical, and the existing suite is green.
+- **Honest failure.** If Repro cannot reproduce a bug, it says so on the issue instead of opening a speculative PR (see the `not-a-bug-reload` eval case).
+- **Spend control.** A global cap (`REPRO_BUDGET_USD`) and a per-run cap (`REPRO_RUN_BUDGET_USD`, default $3); every call is attributed to its run in a ledger.
+- **Resilience.** Model calls retry 429s, 5xx and network errors with jittered exponential backoff and honour `Retry-After`; SAM results are cached by image and prompt.
+- **Least privilege.** The GitHub App asks only for contents, issues and pull requests on repos it is installed on, and uses short-lived installation tokens. Muse Code runs with its OS sandbox on and web tools off, and Repro turns off Muse Code's contributor (training) mode so customer code is not used for training.
+- **Tested.** Unit tests for grounding, budgeting, test generation and agent-output parsing run in CI; the end-to-end eval below runs against real models.
+
+## Eval
+
+`python -m eval.run_eval` runs every case in `eval/cases.yml` end to end and checks each fix against a **hidden, hand-written reference test** Repro never sees. Results: [eval/results.md](eval/results.md).
+
 ## Run it
 
 Requirements: Python 3.12+, Node 20+, ffmpeg, Google Chrome, and the [Muse Code CLI](https://dev.meta.ai/docs/muse-code).
@@ -33,12 +64,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 (cd backend/browser && npm install)
 echo 'MODEL_API_KEY=...' > .env            # Meta Model API key
 
-# Start the app under test (any web app with Playwright configured), e.g. the Taskly demo:
-(cd demo-app && npm install && npm run dev)
-
 .venv/bin/uvicorn backend.api.server:app --port 8000   # open http://localhost:8000
 # or headless:
-.venv/bin/python -m backend.pipeline.run path/to/bug.mp4 --repo demo-app --url http://localhost:5173
+.venv/bin/python -m backend.pipeline.run path/to/bug.mp4 --repo navyabijoy/taskly
 ```
 
 Spend is capped: every Meta API call goes through `backend/models/budget.py`, which logs cost and refuses calls past `REPRO_BUDGET_USD` (default $100). A full run costs about $0.15–0.25.

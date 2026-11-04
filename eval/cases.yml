@@ -1,0 +1,29 @@
+# Repro eval set. Each case is a bug video plus what a correct outcome looks like.
+# reference: a hand-written test Repro never sees; after a fix it must pass.
+# expect: fixed | not-reproduced
+- id: double-save
+  video: eval/videos/double-save.mp4
+  source: navyabijoy/taskly
+  expect: fixed
+  reference: eval/reference/double-save.spec.ts
+  notes: The video shows a click; the user actually double-clicked. Needs a hypothesis.
+
+- id: wrong-delete
+  video: eval/videos/wrong-delete.mp4
+  source: navyabijoy/taskly
+  expect: fixed
+  reference: eval/reference/wrong-delete.spec.ts
+  notes: Two identical x buttons; SAM must pick the right row.
+
+- id: counter
+  video: eval/videos/counter.mp4
+  source: navyabijoy/taskly
+  expect: fixed
+  reference: eval/reference/counter.spec.ts
+  notes: Stale derived state.
+
+- id: not-a-bug-reload
+  video: eval/videos/not-a-bug-reload.mp4
+  source: navyabijoy/taskly
+  expect: not-reproduced
+  notes: The user says a task vanishes on reload; the video shows it does not. Repro must not open a PR.

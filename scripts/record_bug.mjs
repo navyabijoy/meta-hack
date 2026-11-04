@@ -74,6 +74,13 @@ if (bug === 'double-save') {
   await add('Reply to Sam')
   await click(page.getByText('Water plants', { exact: true }))
   await page.waitForTimeout(1500)
+} else if (bug === 'not-a-bug-reload') {
+  // The user claims a task vanishes on reload. It does not.
+  await add('Renew passport')
+  await page.waitForTimeout(600)
+  await page.reload()
+  await page.mouse.move(640, 500, { steps: 10 })
+  await page.waitForTimeout(1800)
 } else {
   throw new Error('unknown bug ' + bug)
 }

@@ -1,0 +1,10 @@
+.env
+.venv
+runs
+samples
+demo-app
+budget
+github-app.pem
+**/node_modules
+**/__pycache__
+.git

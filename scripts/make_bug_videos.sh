@@ -11,10 +11,11 @@ say_text() {
     double-save) echo "I typed buy milk and clicked save. It added buy milk twice. It should only add it once." ;;
     wrong-delete) echo "I finished call mom, switched to active, and deleted book flights. But when I go back to all, pay rent is gone and book flights is still there." ;;
     counter) echo "I added two tasks and then checked off water plants. The counter still says two tasks left. It should say one." ;;
+    not-a-bug-reload) echo "I added renew passport and refreshed the page. My task disappeared after the reload." ;;
   esac
 }
 
-for bug in double-save wrong-delete counter; do
+for bug in ${BUGS:-double-save wrong-delete counter not-a-bug-reload}; do
   dir="$OUT/$bug"
   rm -rf "$dir"; mkdir -p "$dir"
   node scripts/record_bug.mjs "$bug" "$dir" >/dev/null
