@@ -1,0 +1,11 @@
+fastapi==0.162.0
+httpx==0.28.1
+meta-sam-parser==0.1.0
+numpy==2.5.4
+openai==3.45.0
+opencv-python-headless==5.0.0.93
+pillow==13.0.0
+PyGithub==2.10.0
+python-dotenv==1.2.4
+python-multipart==0.0.33
+uvicorn==0.54.0

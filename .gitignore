@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+runs/
+.next/
+budget/ledger.jsonl
+samples/
+budget/sam_cache/
+demo-app/
