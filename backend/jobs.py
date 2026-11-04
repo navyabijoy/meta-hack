@@ -1,6 +1,6 @@
-"""Durable job queue for Repro runs (SQLite).
+"""Durable job queue for Gecko runs (SQLite).
 
-- Runs are queued rows; REPRO_WORKERS threads claim and execute them.
+- Runs are queued rows; GECKO_WORKERS threads claim and execute them.
 - A run interrupted by a crash or restart is re-queued once on startup, then marked failed.
 - Jobs started from a GitHub issue carry the issue and comment, so the bot can
   report back even if the server restarted in between.
@@ -15,8 +15,8 @@ import threading
 import time
 from pathlib import Path
 
-DB = Path(__file__).resolve().parents[1] / "runs" / "repro.db"
-WORKERS = int(os.environ.get("REPRO_WORKERS", "2"))
+DB = Path(__file__).resolve().parents[1] / "runs" / "gecko.db"
+WORKERS = int(os.environ.get("GECKO_WORKERS", "2"))
 MAX_ATTEMPTS = 2
 
 _local = threading.local()
@@ -103,5 +103,5 @@ def start_workers(execute, on_done=None) -> None:
                     print(f"[jobs] on_done failed for {job['id']}: {e}")
 
     for n in range(WORKERS):
-        threading.Thread(target=loop, args=(n,), daemon=True, name=f"repro-worker-{n}").start()
+        threading.Thread(target=loop, args=(n,), daemon=True, name=f"gecko-worker-{n}").start()
     print(f"[jobs] {WORKERS} workers started")

@@ -1,5 +1,5 @@
 // Records a "user" reproducing a seeded bug in the demo app, as a plain video with a
-// visible cursor. Used to create test inputs; Repro never sees how it was made.
+// visible cursor. Used to create test inputs; Gecko never sees how it was made.
 // Usage: node scripts/record_bug.mjs <bug> <out-dir>   (bug: double-save | wrong-delete | counter)
 import { chromium } from '../demo-app/node_modules/@playwright/test/index.mjs'
 import { mkdirSync, renameSync, readdirSync } from 'node:fs'

@@ -16,7 +16,7 @@ from . import budget
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 BASE_URL = "https://api.meta.ai/v1"
-SPARK_MODEL = os.environ.get("REPRO_SPARK_MODEL", "muse-spark-1.3")
+SPARK_MODEL = os.environ.get("GECKO_SPARK_MODEL", "muse-spark-1.3")
 
 
 def api_key() -> str:
@@ -195,3 +195,20 @@ def _retry(fn, attempts: int = 5):
                 except ValueError:
                     pass
             time.sleep(wait)
+
+
+# --- Muse Image ---------------------------------------------------------------
+
+def image_generate(prompt: str, out: str | Path, size: str = "1024x1024", n: int = 1) -> list[Path]:
+    """Generate images with Muse Image. Saves PNGs as out, out-2, ... and returns the paths."""
+    budget.check(estimate_usd=0.01 * n)
+    r = client().images.generate(model="muse-image-1.0", prompt=prompt, n=n, size=size,
+                                 extra_body={"output_format": "png"})
+    paths = []
+    out = Path(out)
+    for i, d in enumerate(r.data):
+        p = out if i == 0 else out.with_name(f"{out.stem}-{i + 1}{out.suffix}")
+        p.write_bytes(base64.b64decode(d.b64_json))
+        paths.append(p)
+    budget.record("muse-image-1.0", 0.01 * len(paths), prompt=prompt[:80])
+    return paths

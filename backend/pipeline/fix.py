@@ -1,6 +1,6 @@
-"""Stage 7, Fix: Muse Code writes the patch; Repro verifies it by running the tests.
+"""Stage 7, Fix: Muse Code writes the patch; Gecko verifies it by running the tests.
 
-Muse Code gets the failing test as its spec. Repro accepts the patch only when
+Muse Code gets the failing test as its spec. Gecko accepts the patch only when
 the new test passes, the test file is unchanged, and the full suite is green.
 Otherwise the failure goes back to Muse Code, up to MAX_ROUNDS.
 """
@@ -18,7 +18,7 @@ from backend.pipeline.workspace import Target
 
 MAX_ROUNDS = 3
 
-FIX_PROMPT = """A user reported a bug with a screen recording. Repro reproduced it as a failing Playwright test.
+FIX_PROMPT = """A user reported a bug with a screen recording. Gecko reproduced it as a failing Playwright test.
 
 Bug: {summary}
 Expected: {expected}
@@ -37,7 +37,7 @@ Test failure:
 Fix the bug in the application source so this test passes. Rules:
 - Find the root cause; make the smallest correct change. Do not just special-case the test's data.
 - Do not edit, move or delete anything under tests/.
-- Do not run the tests, start servers, or install packages; Repro runs the tests itself.
+- Do not run the tests, start servers, or install packages; Gecko runs the tests itself.
 - When done, reply with 2-3 sentences: the root cause, then the fix."""
 
 RETRY_PROMPT = """Your previous change did not pass verification.

@@ -1,5 +1,5 @@
-# Repro eval set. Each case is a bug video plus what a correct outcome looks like.
-# reference: a hand-written test Repro never sees; after a fix it must pass.
+# Gecko eval set. Each case is a bug video plus what a correct outcome looks like.
+# reference: a hand-written test Gecko never sees; after a fix it must pass.
 # expect: fixed | not-reproduced
 - id: double-save
   video: eval/videos/double-save.mp4
@@ -26,4 +26,4 @@
   video: eval/videos/not-a-bug-reload.mp4
   source: navyabijoy/taskly
   expect: not-reproduced
-  notes: The user says a task vanishes on reload; the video shows it does not. Repro must not open a PR.
+  notes: The user says a task vanishes on reload; the video shows it does not. Gecko must not open a PR.

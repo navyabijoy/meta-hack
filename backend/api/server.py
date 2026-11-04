@@ -1,4 +1,4 @@
-"""Repro HTTP server: start runs, stream their events, serve the run page and artifacts.
+"""Gecko HTTP server: start runs, stream their events, serve the run page and artifacts.
 
 Run: .venv/bin/uvicorn backend.api.server:app --port 8000
 """
@@ -24,14 +24,14 @@ from backend.pipeline import run as pipeline
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
 WEB = ROOT / "web"
-DEFAULT_SOURCE = os.environ.get("REPRO_DEFAULT_SOURCE", "navyabijoy/taskly")
-BASE_URL = os.environ.get("REPRO_BASE_URL_PUBLIC", "http://localhost:8000")
+DEFAULT_SOURCE = os.environ.get("GECKO_DEFAULT_SOURCE", "navyabijoy/taskly")
+BASE_URL = os.environ.get("GECKO_BASE_URL_PUBLIC", "http://localhost:8000")
 # GitHub repos the bot answers issues on.
-BOT_REPOS = set(filter(None, os.environ.get("REPRO_BOT_REPOS", "navyabijoy/taskly").split(",")))
+BOT_REPOS = set(filter(None, os.environ.get("GECKO_BOT_REPOS", "navyabijoy/taskly").split(",")))
 MAX_UPLOAD = 300 * 1024 * 1024
 VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".webm"}
 
-app = FastAPI(title="Repro")
+app = FastAPI(title="Gecko")
 
 
 def queue_run(video: Path, report: str, source: str, run_id: str, origin: str = "web",

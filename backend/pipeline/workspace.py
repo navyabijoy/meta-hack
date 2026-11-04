@@ -1,12 +1,12 @@
 """Per-run isolated workspace: a fresh clone of the app repo, its own app server on a free port.
 
-The repo describes itself in `.repro.yml`:
+The repo describes itself in `.gecko.yml`:
 
     install: npm ci                                   # once per lockfile; cached
     start: npm run dev -- --port {port} --strictPort  # {port} is filled in
     ready_path: /                                     # polled until it answers
-    test: npx playwright test                         # Playwright reads REPRO_BASE_URL
-    test_dir: tests/repro                             # where generated tests go
+    test: npx playwright test                         # Playwright reads GECKO_BASE_URL
+    test_dir: tests/gecko                             # where generated tests go
     fresh_state: [localStorage]                       # cleared before each replay
 
 Runs never touch a developer's checkout, so several can run at once.
@@ -29,13 +29,13 @@ from pathlib import Path
 import httpx
 import yaml
 
-CACHE = Path(os.environ.get("REPRO_CACHE", Path.home() / ".cache" / "repro"))
+CACHE = Path(os.environ.get("GECKO_CACHE", Path.home() / ".cache" / "gecko"))
 DEFAULTS = {
     "install": "npm ci",
     "start": "npm run dev -- --port {port} --strictPort",
     "ready_path": "/",
     "test": "npx playwright test",
-    "test_dir": "tests/repro",
+    "test_dir": "tests/gecko",
     "fresh_state": ["localStorage"],
     "start_timeout": 90,
 }
@@ -54,7 +54,9 @@ class RepoConfig:
     @classmethod
     def load(cls, repo: Path) -> "RepoConfig":
         data = dict(DEFAULTS)
-        f = repo / ".repro.yml"
+        f = repo / ".gecko.yml"
+        if not f.exists():
+            f = repo / ".repro.yml"  # older name
         if f.exists():
             data.update(yaml.safe_load(f.read_text()) or {})
         return cls(**{k: data[k] for k in DEFAULTS})
@@ -99,7 +101,8 @@ class Workspace:
         return f"http://127.0.0.1:{self.port}"
 
     def env(self) -> dict:
-        return {**os.environ, "REPRO_BASE_URL": self.url, "CI": "1"}
+        # REPRO_BASE_URL kept for repos configured before the rename.
+        return {**os.environ, "GECKO_BASE_URL": self.url, "REPRO_BASE_URL": self.url, "CI": "1"}
 
     def prepare(self, token: str | None = None) -> RepoConfig:
         if self.dir.exists():
@@ -189,4 +192,4 @@ class Target:
     @classmethod
     def local(cls, repo: str | Path, url: str) -> "Target":
         repo = Path(repo).resolve()
-        return cls(repo, url, RepoConfig.load(repo), {**os.environ, "REPRO_BASE_URL": url})
+        return cls(repo, url, RepoConfig.load(repo), {**os.environ, "GECKO_BASE_URL": url, "REPRO_BASE_URL": url})

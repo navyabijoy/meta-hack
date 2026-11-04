@@ -144,9 +144,9 @@ async function candidates(page) {
         row: rowText(el),
         box: [r.x, r.y, r.width, r.height],
       })
-      el.setAttribute('data-repro-idx', String(out.length - 1))
+      el.setAttribute('data-gecko-idx', String(out.length - 1))
     }
-    document.querySelectorAll('[data-repro-idx]').forEach((e) => e.removeAttribute('data-repro-idx'))
+    document.querySelectorAll('[data-gecko-idx]').forEach((e) => e.removeAttribute('data-gecko-idx'))
     for (const el of document.querySelectorAll('button, a, input, textarea, select, [role], label')) push(el, roleOf(el))
     // Leaf text (spans, list items) for "clicked on the words" steps.
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT)
@@ -218,7 +218,7 @@ async function chooseElement(page, step) {
     if (rows.length === 1) {
       const chosen = rows[0]
       return {
-        handle: await page.$(`[data-repro-idx="${chosen.idx}"]`),
+        handle: await page.$(`[data-gecko-idx="${chosen.idx}"]`),
         meta: { ...meta, confidence: 'medium', reason: `no element named "${step.name}"; matched by row description`,
           element: { role: chosen.role, aria: chosen.aria, text: chosen.text, row: chosen.row },
           locator: await stableLocator(page, chosen) },
@@ -263,7 +263,7 @@ async function chooseElement(page, step) {
 
   meta.element = { role: chosen.role, tag: chosen.tag, aria: chosen.aria, label: chosen.label, text: chosen.text, row: chosen.row }
   meta.reason = signals.join('; ')
-  const handle = await page.$(`[data-repro-idx="${chosen.idx}"]`)
+  const handle = await page.$(`[data-gecko-idx="${chosen.idx}"]`)
   meta.locator = await stableLocator(page, chosen)
   return { handle, meta }
 }
@@ -284,16 +284,16 @@ async function stableLocator(page, c) {
       // eslint-disable-next-line no-new-func
       const loc = new Function('page', `return ${expr}`)(page)
       if ((await loc.count()) !== 1) continue
-      const same = await loc.evaluate((el, idx) => el.getAttribute('data-repro-idx') === String(idx), c.idx)
+      const same = await loc.evaluate((el, idx) => el.getAttribute('data-gecko-idx') === String(idx), c.idx)
       if (same) return expr
     } catch {}
   }
-  return `page.locator('[data-repro-idx="${c.idx}"]')`
+  return `page.locator('[data-gecko-idx="${c.idx}"]')`
 }
 
 async function describeFocused(page) {
   const all = await candidates(page)
-  const idx = await page.evaluate(() => document.activeElement?.getAttribute('data-repro-idx'))
+  const idx = await page.evaluate(() => document.activeElement?.getAttribute('data-gecko-idx'))
   if (idx == null) return null
   const c = all[Number(idx)]
   return c ? { role: c.role, locator: await stableLocator(page, c) } : null

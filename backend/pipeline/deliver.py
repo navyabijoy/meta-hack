@@ -1,7 +1,7 @@
-"""Stage 8, Deliver: push the repro branch and open a pull request with the evidence.
+"""Stage 8, Deliver: push the gecko branch and open a pull request with the evidence.
 
 Images (a GIF of the bug video, SAM grounding overlays, video vs replay) are
-pushed to a separate `repro-evidence` branch so they show in the PR body
+pushed to a separate `gecko-evidence` branch so they show in the PR body
 without adding files to the PR's diff.
 """
 
@@ -18,7 +18,7 @@ from PIL import Image
 
 from backend.pipeline.fix import git
 
-EVIDENCE_BRANCH = "repro-evidence"
+EVIDENCE_BRANCH = "gecko-evidence"
 
 
 def gh(*args: str, cwd: Path, token: str | None = None) -> str:
@@ -87,11 +87,11 @@ def push_evidence(repo: Path, run_id: str, src: Path, origin: str = "origin") ->
             git(repo, "worktree", "add", "-q", "--detach", str(wt))
             git(wt, "checkout", "-q", "--orphan", EVIDENCE_BRANCH)
             git(wt, "rm", "-rqf", ".")
-            (wt / "README.md").write_text("Evidence images for Repro pull requests. Not part of the app.\n")
+            (wt / "README.md").write_text("Evidence images for Gecko pull requests. Not part of the app.\n")
         try:
             shutil.copytree(src, wt / run_id, dirs_exist_ok=True)
             git(wt, "add", "-A")
-            git(wt, "-c", "user.name=repro[bot]", "-c", "user.email=repro-bot@users.noreply.github.com",
+            git(wt, "-c", "user.name=gecko[bot]", "-c", "user.email=gecko-bot@users.noreply.github.com",
                 "commit", "-qm", f"evidence for run {run_id}")
             git(wt, "push", "-q", origin, f"HEAD:refs/heads/{EVIDENCE_BRANCH}")
         finally:
@@ -107,7 +107,7 @@ def pr_body(summary: dict, files: dict, raw: str, run_url: str | None, blob: str
     hyp = ""
     if summary.get("hypotheses") and summary.get("attempts", 1) > 1:
         h = summary["hypotheses"][0]
-        hyp = (f"\n> The straight replay did **not** show the bug. Repro hypothesised that step {h['step']} was a "
+        hyp = (f"\n> The straight replay did **not** show the bug. Gecko hypothesised that step {h['step']} was a "
                f"**{h['variant']}** ({h['why']}) and that reproduced it.\n")
     sam = files.get("sam_step") or {}
     out = f"""## Bug
@@ -121,11 +121,11 @@ def pr_body(summary: dict, files: dict, raw: str, run_url: str | None, blob: str
 
 ## Reproduction
 
-Repro worked out these steps from the video, replayed them in Chrome, and wrote a test that fails the same way:
+Gecko worked out these steps from the video, replayed them in Chrome, and wrote a test that fails the same way:
 
 {steps}
 {hyp}
-| User's video | Repro's replay |
+| User's video | Gecko's replay |
 | --- | --- |
 | <img src="{raw}/{files['bug_frame']}" width="380"> | <img src="{raw}/{files.get('replay', files['bug_frame'])}" width="380"> |
 
@@ -135,7 +135,7 @@ Test: [`{summary['test_path']}`]({blob}/{summary['test_path']}). It fails on `{s
 {_first_lines(summary.get('failure', ''), 4)}
 ```
 
-<details><summary>How Repro knew what was clicked (SAM 3.1)</summary>
+<details><summary>How Gecko knew what was clicked (SAM 3.1)</summary>
 
 Step {sam.get('step_id')}: {sam.get('reason')} (confidence: {sam.get('confidence')}).
 
@@ -146,14 +146,14 @@ Step {sam.get('step_id')}: {sam.get('reason')} (confidence: {sam.get('confidence
 
 {summary.get('fix_explanation', '')}
 
-Written by **Muse Code** with the failing test as its spec. Repro verified that the test now passes, the test file is unchanged, and the full suite is green.
+Written by **Muse Code** with the failing test as its spec. Gecko verified that the test now passes, the test file is unchanged, and the full suite is green.
 
 ## Review it
 
 The branch has two commits. Check out the first (`test: reproduce …`) to watch the test fail; the second is the fix.
 
 ---
-<sub>Opened by Repro · Meta API cost {f"${summary['usd']:.2f}" if summary.get('usd') is not None else ''} · {round(summary.get('seconds') or 0)}s from video to PR{f' · [run page]({run_url})' if run_url else ''}</sub>
+<sub>Opened by Gecko · Meta API cost {f"${summary['usd']:.2f}" if summary.get('usd') is not None else ''} · {round(summary.get('seconds') or 0)}s from video to PR{f' · [run page]({run_url})' if run_url else ''}</sub>
 """
     return out
 

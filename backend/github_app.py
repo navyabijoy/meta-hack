@@ -1,9 +1,9 @@
-"""repro[bot]: a GitHub App that turns issues with a bug video into verified fix PRs.
+"""gecko[bot]: a GitHub App that turns issues with a bug video into verified fix PRs.
 
 Setup (two clicks): open http://localhost:8000/github/setup, click "Create GitHub App",
 then install it on the target repo. Credentials land in .env and github-app.pem.
 
-The bot polls installed repos for open issues that carry a video (or a `/repro`
+The bot polls installed repos for open issues that carry a video (or a `/gecko`
 comment), so it needs no public webhook URL.
 """
 
@@ -126,12 +126,12 @@ def installed_repos() -> list[Repo]:
 def manifest(base_url: str) -> dict:
     owner = env("GITHUB_OWNER") or "dev"
     return {
-        "name": f"repro-bot-{owner}"[:34],
+        "name": f"gecko-bot-{owner}"[:34],
         "url": "https://github.com/navyabijoy/meta-hack",
         "description": "Send a video of a bug. Get a pull request that proves it and fixes it.",
         "public": True,
         "redirect_url": f"{base_url}/github/callback",
-        "hook_attributes": {"url": "https://example.com/repro-webhook-unused", "active": False},
+        "hook_attributes": {"url": "https://example.com/gecko-webhook-unused", "active": False},
         "default_permissions": {"contents": "write", "pull_requests": "write", "issues": "write", "metadata": "read"},
         "default_events": [],
     }
@@ -141,9 +141,9 @@ def setup_page(base_url: str) -> str:
     state = secrets.token_urlsafe(16)
     save_env({"GITHUB_SETUP_STATE": state})
     m = json.dumps(manifest(base_url)).replace("'", "&#39;")
-    return f"""<!doctype html><meta charset="utf-8"><title>Create repro[bot]</title>
+    return f"""<!doctype html><meta charset="utf-8"><title>Create gecko[bot]</title>
 <body style="font:15px Inter,system-ui;max-width:560px;margin:80px auto;color:#1c1917">
-<h2>Create the Repro GitHub App</h2>
+<h2>Create the Gecko GitHub App</h2>
 <p>This registers a GitHub App on your account with permission to read code and open issues comments and pull requests. GitHub will ask you to confirm.</p>
 <form action="https://github.com/settings/apps/new?state={state}" method="post">
 <input type="hidden" name="manifest" value='{m}'>
@@ -219,10 +219,10 @@ def handle_issue(repo: Repo, issue: dict, queue_run) -> None:
     n = issue["number"]
     video = find_video(repo, issue)
     if not video:
-        repo.post(f"/issues/{n}/comments", {"body": "I need a screen recording to reproduce this. Attach an MP4 or MOV of the bug and comment `/repro`."})
+        repo.post(f"/issues/{n}/comments", {"body": "I need a screen recording to catch this. Attach an MP4 or MOV and comment `/gecko`."})
         return
     comment = repo.post(f"/issues/{n}/comments", {"body": (
-        "**Reproducing…** I'm watching the recording, replaying it in a real browser, and writing a test "
+        "**On it.** Watching the recording, replaying it in a real browser, and writing a test "
         "that fails the same way. I'll update this comment.")})
     run_id = time.strftime("%m%d-%H%M%S-") + f"i{n}"
     folder = ROOT / "runs" / run_id
@@ -246,7 +246,7 @@ def report(ctx: dict, summary: dict, run_dir: Path) -> None:
             pr = deliver.open_pr(summary, run_dir, issue=ctx["issue"], token=repo.token)
             summary["pr_url"] = pr
             (run_dir / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
-            body = (f"**Reproduced and fixed:** {pr}\n\n"
+            body = (f"**Caught it.** {pr}\n\n"
                     f"- A test that fails on `{summary.get('base')}`: `{summary.get('test_path')}`\n"
                     f"- A fix by Muse Code, verified: the test passes and the suite stays green\n\n"
                     f"<sub>{round(summary.get('seconds') or 0)}s · Meta API ${summary.get('usd', 0):.2f}</sub>")
@@ -254,7 +254,7 @@ def report(ctx: dict, summary: dict, run_dir: Path) -> None:
             body = (f"**Reproduced, but no verified fix yet.** The failing test is on branch "
                     f"`{summary.get('branch')}`. Muse Code's attempts did not pass verification.")
         elif status == "not-reproduced":
-            body = (f"**Could not reproduce.** {summary.get('reproduce_why', '')}\n\n"
+            body = (f"**Couldn't reproduce this one.** {summary.get('reproduce_why', '')}\n\n"
                     "I'd rather say so than open a guess. A recording that starts from a fresh page load helps.")
         else:
             body = f"**Something went wrong on my side.** `{summary.get('error', 'unknown error')}`"
@@ -274,9 +274,9 @@ def poll_once(repos: set[str], queue_run, state: dict) -> None:
             if key in state["handled"]:
                 continue
             body = issue.get("body") or ""
-            wants = VIDEO_RE.search(body) or "/repro" in body
+            wants = VIDEO_RE.search(body) or "/gecko" in body
             if not wants and issue.get("comments"):
-                wants = any("/repro" in (c.get("body") or "")
+                wants = any("/gecko" in (c.get("body") or "")
                             for c in repo.get(f"/issues/{issue['number']}/comments"))
             if not wants:
                 continue

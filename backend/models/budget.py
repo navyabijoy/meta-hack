@@ -14,8 +14,8 @@ import threading
 import time
 from pathlib import Path
 
-HARD_CAP_USD = float(os.environ.get("REPRO_BUDGET_USD", "100"))
-RUN_CAP_USD = float(os.environ.get("REPRO_RUN_BUDGET_USD", "3"))  # one run may not spend more
+HARD_CAP_USD = float(os.environ.get("GECKO_BUDGET_USD", "100"))
+RUN_CAP_USD = float(os.environ.get("GECKO_RUN_BUDGET_USD", "3"))  # one run may not spend more
 WARN_AT_USD = HARD_CAP_USD * 0.8
 
 LEDGER = Path(__file__).resolve().parents[2] / "budget" / "ledger.jsonl"

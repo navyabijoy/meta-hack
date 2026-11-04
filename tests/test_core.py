@@ -67,7 +67,7 @@ def test_write_test_keeps_pacing_and_assertions(tmp_path):
     cfg = RepoConfig.load(tmp_path)
     path, code = reproduce.write_test(tmp_path, {"title": "Adds once", "summary": "x"}, rep,
                                       ["await expect(page.getByText('A')).toHaveCount(1);"], "adds-once", cfg)
-    assert path == tmp_path / "tests/repro/adds-once.spec.ts"
+    assert path == tmp_path / "tests/gecko/adds-once.spec.ts"
     assert "localStorage.clear()" in code
     # a pause after the click, none after typing
     assert code.index(".click()") < code.index("waitForTimeout(700)")
@@ -75,11 +75,11 @@ def test_write_test_keeps_pacing_and_assertions(tmp_path):
 
 
 def test_fresh_state_can_be_disabled(tmp_path):
-    (tmp_path / ".repro.yml").write_text("fresh_state: []\ntest_dir: e2e/repro\n")
+    (tmp_path / ".gecko.yml").write_text("fresh_state: []\ntest_dir: e2e/gecko\n")
     cfg = RepoConfig.load(tmp_path)
     path, code = reproduce.write_test(tmp_path, {"title": "t", "summary": "s"}, {"steps": []}, [], "t", cfg)
     assert "localStorage" not in code
-    assert path.parent == tmp_path / "e2e/repro"
+    assert path.parent == tmp_path / "e2e/gecko"
 
 
 # ---------------------------------------------------------------- planning helpers
@@ -116,8 +116,8 @@ def test_strip_local_links():
 # ---------------------------------------------------------------- config
 
 def test_repo_config_defaults_and_override(tmp_path):
-    assert RepoConfig.load(tmp_path).test_dir == "tests/repro"
-    (tmp_path / ".repro.yml").write_text("start: pnpm dev --port {port}\n")
+    assert RepoConfig.load(tmp_path).test_dir == "tests/gecko"
+    (tmp_path / ".gecko.yml").write_text("start: pnpm dev --port {port}\n")
     cfg = RepoConfig.load(tmp_path)
     assert cfg.start.format(port=1234) == "pnpm dev --port 1234"
     assert cfg.install == "npm ci"

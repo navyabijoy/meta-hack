@@ -14,7 +14,7 @@ from pathlib import Path
 from backend.models import meta
 from backend.pipeline.ingest import Ingested
 
-PLAN_PROMPT = """You are Repro, an agent that turns a screen recording of a web-app bug into exact reproduction steps.
+PLAN_PROMPT = """You are Gecko, an agent that turns a screen recording of a web-app bug into exact reproduction steps.
 
 The images are contact sheets: frames from the recording in time order, each labelled "#<frame> t=<seconds>". A black arrow is the user's mouse cursor.
 {narration}

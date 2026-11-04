@@ -1,4 +1,4 @@
-# Repro eval results
+# Gecko eval results
 
 Run on 2026-11-05 00:46. **4 of 4 cases correct.**
 
@@ -6,7 +6,7 @@ Run on 2026-11-05 00:46. **4 of 4 cases correct.**
 - Median time, video to verified fix: 139 s
 - Median Meta API cost per run: $0.117
 
-| Case | Expected | Repro's result | Reference test | Replay attempts | Fix rounds | Time | Cost | Correct |
+| Case | Expected | Gecko's result | Reference test | Replay attempts | Fix rounds | Time | Cost | Correct |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | double-save | fixed | fixed | pass | 2 | 1 | 190 s | $0.18 | yes |
 | wrong-delete | fixed | fixed | pass | 1 | 1 | 139 s | $0.12 | yes |
@@ -22,4 +22,4 @@ Run on 2026-11-05 00:46. **4 of 4 cases correct.**
 - **double-save**: The video shows a click; the user actually double-clicked. Needs a hypothesis.
 - **wrong-delete**: Two identical x buttons; SAM must pick the right row.
 - **counter**: Stale derived state.
-- **not-a-bug-reload**: The user says a task vanishes on reload; the video shows it does not. Repro must not open a PR.
+- **not-a-bug-reload**: The user says a task vanishes on reload; the video shows it does not. Gecko must not open a PR.

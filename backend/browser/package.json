@@ -1,1 +1,1 @@
-{ "name": "repro-browser", "private": true, "type": "module", "dependencies": { "@playwright/test": "1.56.1" } }
+{ "name": "gecko-browser", "private": true, "type": "module", "dependencies": { "@playwright/test": "1.56.1" } }

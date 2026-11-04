@@ -1,4 +1,4 @@
-// Hidden reference test: written by hand, never shown to Repro. Used by the eval to check fixes.
+// Hidden reference test: written by hand, never shown to Gecko. Used by the eval to check fixes.
 import { test, expect } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {

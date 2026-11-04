@@ -1,4 +1,4 @@
-// Repro run page: builds the view from the run's event stream.
+// Gecko run page: builds the view from the run's event stream.
 const $ = (s, el = document) => el.querySelector(s)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const fileUrl = (p) => {
@@ -41,7 +41,7 @@ async function homePage() {
     </section>
     <section class="card">
       <h2>Runs</h2>
-      <p class="sub">Every run, with what Repro proved.</p>
+      <p class="sub">Every run, with what Gecko proved.</p>
       <ul class="runs">${runs.map((r) => `
         <li><span class="pill ${esc(r.status)}">${esc(label(r.status))}</span>
         <a class="t" href="/runs/${esc(r.id)}">${esc(r.title || r.id)}</a>
@@ -219,13 +219,13 @@ function stageReproduce(st, d, plan) {
     }
     body += `<div class="attempt"><div class="ah">Attempt ${n}${variants ? ` <span class="why">(${variants})</span>` : ''}<span style="margin-left:auto">${verdict}</span></div>
       ${a.replay?.final ? `<div class="compare"><figure><img src="${bugFrame}"><figcaption>User's video, bug frame</figcaption></figure>
-      <figure><img src="${fileUrl(a.replay.final)}"><figcaption>Repro's replay in Chrome</figcaption></figure></div>` : ''}
+      <figure><img src="${fileUrl(a.replay.final)}"><figcaption>Gecko's replay in Chrome</figcaption></figure></div>` : ''}
       ${a.judge ? `<div class="why">Muse Spark: ${esc(a.judge.why)}</div>` : ''}
       ${a.test && !a.test.passed ? `<pre class="err">${esc(firstLines(a.test.error, 4))}</pre>` : ''}</div>`
   }
   const code = st.summary?.test_code || [...atts].reverse().find(([, a]) => a.test)?.[1].test.code
   if (code && s?.doneAt != null && s.reproduced) body += `<details open><summary>Generated test</summary><pre>${esc(code)}</pre></details>`
-  if (s?.doneAt != null && !s.reproduced) body += `<div class="hyp"><b>Could not reproduce.</b> ${esc(s.why)}. Repro reports this instead of guessing.</div>`
+  if (s?.doneAt != null && !s.reproduced) body += `<div class="hyp"><b>Could not reproduce.</b> ${esc(s.why)}. Gecko reports this instead of guessing.</div>`
   return stageBox(3, 'Reproduce in a real browser', ['Playwright', 'Muse Spark judge'], s, body, { fail: s?.doneAt != null && !s.reproduced })
 }
 
@@ -284,7 +284,7 @@ const median = (xs) => {
 }
 const pct = (a, b) => (b ? Math.round((100 * a) / b) + '%' : '—')
 
-let dashFilter = (() => { try { return localStorage.getItem('repro.dashFilter') || 'all' } catch { return 'all' } })()
+let dashFilter = (() => { try { return localStorage.getItem('gecko.dashFilter') || 'all' } catch { return 'all' } })()
 
 async function dashboardPage() {
   await renderDashboard()
@@ -362,7 +362,7 @@ async function renderDashboard() {
   stageChart($('#stageChart'), done.slice(-12))
   document.querySelectorAll('.seg button').forEach((btn) => btn.onclick = () => {
     dashFilter = btn.dataset.f
-    try { localStorage.setItem('repro.dashFilter', dashFilter) } catch {}
+    try { localStorage.setItem('gecko.dashFilter', dashFilter) } catch {}
     renderDashboard()
   })
 }

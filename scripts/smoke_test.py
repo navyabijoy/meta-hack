@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from backend.models import budget, meta
 
-tmp = Path(tempfile.mkdtemp(prefix="repro-smoke-"))
+tmp = Path(tempfile.mkdtemp(prefix="gecko-smoke-"))
 which = set(sys.argv[1:]) or {"models", "spark", "sam", "asr"}
 
 # A fake app screenshot: a todo list with a Save button and a duplicated item.

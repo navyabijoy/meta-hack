@@ -1,10 +1,10 @@
-"""Run Repro on every case in eval/cases.yml and score it.
+"""Run Gecko on every case in eval/cases.yml and score it.
 
 A case passes when:
-- expect=fixed: Repro reproduced it, its fix was verified, AND the hidden
-  hand-written reference test passes on Repro's branch (so the fix is right,
-  not just tuned to Repro's own test).
-- expect=not-reproduced: Repro declined to reproduce (no PR).
+- expect=fixed: Gecko reproduced it, its fix was verified, AND the hidden
+  hand-written reference test passes on Gecko's branch (so the fix is right,
+  not just tuned to Gecko's own test).
+- expect=not-reproduced: Gecko declined to reproduce (no PR).
 
 Usage: .venv/bin/python -m eval.run_eval [case-id ...]
 Writes eval/results.md and eval/results.json.
@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def check_reference(summary: dict, reference: Path) -> dict:
-    """Run the hidden reference test against Repro's fixed branch, in its workspace."""
+    """Run the hidden reference test against Gecko's fixed branch, in its workspace."""
     run_dir = ROOT / "runs" / summary["id"]
     ws = Workspace(summary["source"], run_dir)
     cfg = RepoConfig.load(ws.dir)
@@ -85,7 +85,7 @@ def write_markdown(results: list[dict], cases: list[dict]) -> None:
     ok = sum(r["passed"] for r in results)
     fixed_cases = [r for r in results if r["expect"] == "fixed"]
     lines = [
-        "# Repro eval results",
+        "# Gecko eval results",
         "",
         f"Run on {time.strftime('%Y-%m-%d %H:%M')}. **{ok} of {n} cases correct.**",
         "",
@@ -93,7 +93,7 @@ def write_markdown(results: list[dict], cases: list[dict]) -> None:
         f"- Median time, video to verified fix: {_median([r['seconds'] for r in fixed_cases if r['status'] == 'fixed'])} s",
         f"- Median Meta API cost per run: ${_median([r['usd'] for r in results if r['usd'] is not None], 3)}",
         "",
-        "| Case | Expected | Repro's result | Reference test | Replay attempts | Fix rounds | Time | Cost | Correct |",
+        "| Case | Expected | Gecko's result | Reference test | Replay attempts | Fix rounds | Time | Cost | Correct |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in results:
