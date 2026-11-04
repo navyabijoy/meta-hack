@@ -68,6 +68,13 @@ def main(only: list[str]) -> None:
         results.append(r)
         print(json.dumps(r))
 
+    if only and (ROOT / "eval" / "results.json").exists():
+        # Re-running some cases: keep the latest result for every other case.
+        prev = {r["id"]: r for r in json.loads((ROOT / "eval" / "results.json").read_text())}
+        prev.update({r["id"]: r for r in results})
+        order = [c["id"] for c in yaml.safe_load((ROOT / "eval" / "cases.yml").read_text())]
+        results = [prev[i] for i in order if i in prev]
+        cases = yaml.safe_load((ROOT / "eval" / "cases.yml").read_text())
     (ROOT / "eval" / "results.json").write_text(json.dumps(results, indent=1))
     write_markdown(results, cases)
 

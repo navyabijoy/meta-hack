@@ -1,0 +1,50 @@
+[
+ {
+  "id": "double-save",
+  "expect": "fixed",
+  "status": "fixed",
+  "seconds": 190.3,
+  "usd": 0.178,
+  "attempts": 2,
+  "fix_rounds": 1,
+  "run": "eval-1105-003219-double-save",
+  "reference": "pass",
+  "passed": true
+ },
+ {
+  "id": "wrong-delete",
+  "expect": "fixed",
+  "status": "not-reproduced",
+  "seconds": 140.7,
+  "usd": 0.0818,
+  "attempts": 3,
+  "fix_rounds": null,
+  "run": "eval-1105-003535-wrong-delete",
+  "reference": null,
+  "passed": false
+ },
+ {
+  "id": "counter",
+  "expect": "fixed",
+  "status": "fixed",
+  "seconds": 123.1,
+  "usd": 0.1185,
+  "attempts": 1,
+  "fix_rounds": 1,
+  "run": "eval-1105-003756-counter",
+  "reference": "pass",
+  "passed": true
+ },
+ {
+  "id": "not-a-bug-reload",
+  "expect": "not-reproduced",
+  "status": "not-reproduced",
+  "seconds": 185.4,
+  "usd": 0.0806,
+  "attempts": 3,
+  "fix_rounds": null,
+  "run": "eval-1105-004007-not-a-bug-reload",
+  "reference": null,
+  "passed": true
+ }
+]

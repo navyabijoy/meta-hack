@@ -284,9 +284,16 @@ const median = (xs) => {
 }
 const pct = (a, b) => (b ? Math.round((100 * a) / b) + '%' : '—')
 
+let dashFilter = (() => { try { return localStorage.getItem('repro.dashFilter') || 'all' } catch { return 'all' } })()
+
 async function dashboardPage() {
+  await renderDashboard()
+  setInterval(() => { if (!document.hidden) renderDashboard() }, 10000)
+}
+
+async function renderDashboard() {
   const d = await (await fetch('/api/dashboard')).json()
-  const runs = d.runs
+  const runs = d.runs.filter((r) => dashFilter === 'all' || (dashFilter === 'eval' ? r.eval : !r.eval))
   const done = runs.filter((r) => r.status && r.status !== 'running')
   const count = (k) => done.filter((r) => r.status === k).length
   const fixed = count('fixed'), reproduced = fixed + count('reproduced')
@@ -296,7 +303,9 @@ async function dashboardPage() {
 
   $('#app').innerHTML = `
   <div class="dash">
-    <div class="dhead"><h1>Dashboard</h1><span class="why">${done.length} finished runs · ${runs.filter((r) => r.eval).length} from the eval set</span></div>
+    <div class="dhead"><h1>Dashboard</h1><span class="why">${done.length} finished runs · updates live</span>
+      <div class="seg" role="group" aria-label="Which runs">${[['all', 'All runs'], ['real', 'Real runs'], ['eval', 'Eval set']].map(([k, l]) =>
+        `<button data-f="${k}" aria-pressed="${dashFilter === k}" class="${dashFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <section class="tiles">
       ${tile('Runs', done.length, `${count('fixed')} fixed · ${count('not-reproduced')} declined`)}
       ${tile('Reproduce rate', pct(reproduced, done.length), `${reproduced} of ${done.length} reproduced from video alone`)}
@@ -351,6 +360,11 @@ async function dashboardPage() {
   </div>
   <div id="tip" class="tip" hidden></div>`
   stageChart($('#stageChart'), done.slice(-12))
+  document.querySelectorAll('.seg button').forEach((btn) => btn.onclick = () => {
+    dashFilter = btn.dataset.f
+    try { localStorage.setItem('repro.dashFilter', dashFilter) } catch {}
+    renderDashboard()
+  })
 }
 
 function tile(l, v, s) { return `<div class="tile"><div class="tl">${l}</div><div class="tv">${v}</div><div class="ts">${s}</div></div>` }
