@@ -58,6 +58,7 @@ def run(
         Path(events_path).write_text(proc.stdout)
 
     usage, final_text = _parse(proc.stdout)
+    final_text = _strip_local_links(final_text, Path(workspace))
     usd = 0.0
     for m in usage:
         usd += budget.token_cost(
@@ -85,3 +86,12 @@ def _parse(stdout: str) -> tuple[list[dict], str]:
         elif kind == "run_terminal":
             final_text = payload.get("text") or ""
     return usage, final_text
+
+
+def _strip_local_links(text: str, workspace: Path) -> str:
+    """Muse Code links files by absolute local path; keep the name, drop the machine path."""
+    import re
+
+    root = str(Path(workspace).resolve())
+    text = re.sub(r"\[([^\]]+)\]\((/[^)]+)\)", lambda m: f"`{m.group(1)}`" if m.group(2).startswith("/") else m.group(0), text)
+    return text.replace(root + "/", "").replace(root, ".")

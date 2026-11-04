@@ -14,7 +14,9 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+
+from backend import github_app
 
 from backend.models import budget
 from backend.pipeline import run as pipeline
@@ -26,6 +28,9 @@ DEFAULT_REPO = str(ROOT / "demo-app")
 DEFAULT_URL = "http://localhost:5173"
 
 app = FastAPI(title="Repro")
+BASE_URL = "http://localhost:8000"
+# GitHub repos the bot serves: full name -> (local checkout, URL where that app runs)
+BOT_REPOS = {"navyabijoy/taskly": (DEFAULT_REPO, DEFAULT_URL)}
 _lock = threading.Lock()  # one run at a time: runs share the app repo's working tree
 
 
@@ -103,13 +108,43 @@ def open_pr(run_id: str):
 
     d = _run_dir(run_id)
     summary = json.loads((d / "summary.json").read_text())
+    token = None
+    if github_app.configured():
+        slug = deliver.repo_slug(Path(summary["repo"]))
+        match = [r for r in github_app.installed_repos() if r.full_name == slug]
+        token = match[0].token if match else None
     try:
-        pr = deliver.open_pr(summary, d)
+        pr = deliver.open_pr(summary, d, token=token)
     except Exception as e:
         raise HTTPException(400, str(e))
     summary["pr_url"] = pr
     (d / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
     return {"pr_url": pr}
+
+
+@app.on_event("startup")
+def _start_bot():
+    github_app.save_env({"GITHUB_OWNER": "navyabijoy"}) if not github_app.env("GITHUB_OWNER") else None
+    github_app.start_bot(BOT_REPOS, start_run)
+
+
+@app.get("/github/setup", response_class=HTMLResponse)
+def github_setup():
+    return github_app.setup_page(BASE_URL)
+
+
+@app.get("/github/callback")
+def github_callback(code: str, state: str = ""):
+    install_url = github_app.finish_setup(code, state)
+    return RedirectResponse(install_url)
+
+
+@app.get("/api/bot")
+def bot_status():
+    if not github_app.configured():
+        return {"configured": False, "setup": f"{BASE_URL}/github/setup"}
+    return {"configured": True, "slug": github_app.env("GITHUB_APP_SLUG"),
+            "repos": [r.full_name for r in github_app.installed_repos()]}
 
 
 @app.get("/api/budget")

@@ -21,6 +21,7 @@ from backend.models import meta
 from backend.pipeline import replay as replay_mod
 from backend.pipeline.ingest import Ingested
 from backend.pipeline.understand import parse_json
+from backend.pipeline.workspace import RepoConfig, Target
 
 TEST_DIR = "tests/repro"
 VARIANTS = ["dblclick", "rapid-double-submit"]
@@ -103,7 +104,8 @@ def judge(ing: Ingested, plan: dict, rep: dict) -> dict:
     return parse_json(meta.spark([{"role": "user", "content": content}], reasoning_effort="low"))
 
 
-def write_test(repo: Path, plan: dict, rep: dict, assertions: list[str], name: str) -> tuple[Path, str]:
+def write_test(repo: Path, plan: dict, rep: dict, assertions: list[str], name: str,
+               cfg: RepoConfig | None = None) -> tuple[Path, str]:
     # Keep the replay's pacing between actions, so the test sees what the replay saw.
     lines = []
     for s in rep["steps"]:
@@ -118,8 +120,7 @@ def write_test(repo: Path, plan: dict, rep: dict, assertions: list[str], name: s
         "",
         f"test('{title}', async ({{ page }}) => {{",
         "  await page.goto('/')",
-        "  await page.evaluate(() => localStorage.clear())",
-        "  await page.reload()",
+        *_fresh_state_lines(cfg),
         "",
         *[f"  {l}" for l in lines],
         "  await page.waitForTimeout(800)",
@@ -129,18 +130,30 @@ def write_test(repo: Path, plan: dict, rep: dict, assertions: list[str], name: s
         "})",
         "",
     ])
-    path = repo / TEST_DIR / f"{name}.spec.ts"
+    path = repo / (cfg.test_dir if cfg else TEST_DIR) / f"{name}.spec.ts"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(code)
     return path, code
 
 
-def run_test(repo: Path, test_path: Path | None = None) -> dict:
+def _fresh_state_lines(cfg: RepoConfig | None) -> list[str]:
+    state = cfg.fresh_state if cfg else ["localStorage"]
+    clears = {"localStorage": "localStorage.clear()", "sessionStorage": "sessionStorage.clear()"}
+    calls = [clears[s] for s in state if s in clears]
+    if not calls:
+        return []
+    return [f"  await page.evaluate(() => {{ {'; '.join(calls)} }})", "  await page.reload()"]
+
+
+def run_test(repo: Path, test_path: Path | None = None, env: dict | None = None,
+             cmd: str = "npx playwright test") -> dict:
     """Run one test file (or the whole suite) and summarise the result."""
-    args = ["npx", "playwright", "test", "--reporter=json"]
+    import shlex
+
+    args = shlex.split(cmd) + ["--reporter=json"]
     if test_path:
         args.append(str(test_path.relative_to(repo)))
-    proc = subprocess.run(args, cwd=repo, capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(args, cwd=repo, capture_output=True, text=True, timeout=300, env=env)
     try:
         report = json.loads(proc.stdout)
     except json.JSONDecodeError:
@@ -171,18 +184,19 @@ def _strip_ansi(s: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
-def attempt(ing: Ingested, plan: dict, grounding: list[dict], repo: Path, url: str, out: Path,
+def attempt(ing: Ingested, plan: dict, grounding: list[dict], tgt: Target, out: Path,
             variants: dict[int, str], n: int, on_event=None) -> Attempt:
     emit = on_event or (lambda *a, **k: None)
-    rep = replay_mod.replay(url, replay_mod.build_steps(plan, grounding, variants), out / f"replay{n}")
+    rep = replay_mod.replay(tgt.url, replay_mod.build_steps(plan, grounding, variants), out / f"replay{n}",
+                            fresh_state=tgt.cfg.fresh_state)
     emit("replay", attempt=n, ok=rep.get("ok"), steps=rep.get("steps"), variants=variants, final=rep.get("final"))
     if not rep.get("ok"):
         return Attempt(variants, rep, {}, "", "", {}, False, "replay could not complete the steps")
     j = judge(ing, plan, rep)
     emit("judge", attempt=n, **j)
     name = slug(plan.get("title") or plan["summary"])
-    path, code = write_test(repo, plan, rep, j.get("assertions", []), name)
-    run = run_test(repo, path)
+    path, code = write_test(tgt.repo, plan, rep, j.get("assertions", []), name, tgt.cfg)
+    run = run_test(tgt.repo, path, tgt.env, tgt.cfg.test)
     emit("test", attempt=n, path=str(path), code=code, **run)
     reproduced = (not run["passed"]) and run["failure"] == "assertion" and bool(j.get("same_bug"))
     if reproduced:
@@ -196,10 +210,10 @@ def attempt(ing: Ingested, plan: dict, grounding: list[dict], repo: Path, url: s
     return Attempt(variants, rep, j, str(path), code, run, reproduced, why)
 
 
-def run(ing: Ingested, plan: dict, grounding: list[dict], repo: Path, url: str, out: Path, on_event=None) -> ReproResult:
+def run(ing: Ingested, plan: dict, grounding: list[dict], tgt: Target, out: Path, on_event=None) -> ReproResult:
     emit = on_event or (lambda *a, **k: None)
     result = ReproResult(False)
-    a = attempt(ing, plan, grounding, repo, url, out, {}, 1, on_event)
+    a = attempt(ing, plan, grounding, tgt, out, {}, 1, on_event)
     result.attempts.append(a)
     if a.reproduced:
         result.reproduced = True
@@ -216,7 +230,7 @@ def run(ing: Ingested, plan: dict, grounding: list[dict], repo: Path, url: str, 
     result.hypotheses = hyps
     emit("hypotheses", hypotheses=hyps)
     for n, hyp in enumerate(hyps, start=2):
-        a = attempt(ing, plan, grounding, repo, url, out, {int(hyp["step"]): hyp["variant"]}, n, on_event)
+        a = attempt(ing, plan, grounding, tgt, out, {int(hyp["step"]): hyp["variant"]}, n, on_event)
         result.attempts.append(a)
         if a.reproduced:
             result.reproduced = True

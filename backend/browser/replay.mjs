@@ -19,8 +19,11 @@ let ok = true
 
 try {
   await page.goto(input.url)
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
+  const fresh = input.freshState ?? ['localStorage']
+  if (fresh.length) {
+    await page.evaluate((kinds) => { for (const k of kinds) if (k in window) window[k].clear() }, fresh)
+    await page.reload()
+  }
   await page.screenshot({ path: join(input.outDir, 'step00.png') })
 
   for (const step of input.steps) {

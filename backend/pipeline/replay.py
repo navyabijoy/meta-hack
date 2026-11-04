@@ -29,8 +29,9 @@ def build_steps(plan: dict, grounding: list[dict], variants: dict[int, str] | No
     return steps
 
 
-def replay(url: str, steps: list[dict], out_dir: Path) -> dict:
-    payload = json.dumps({"url": url, "outDir": str(Path(out_dir).resolve()), "steps": steps})
+def replay(url: str, steps: list[dict], out_dir: Path, fresh_state: list[str] | None = None) -> dict:
+    payload = json.dumps({"url": url, "outDir": str(Path(out_dir).resolve()), "steps": steps,
+                          "freshState": fresh_state if fresh_state is not None else ["localStorage"]})
     proc = subprocess.run(
         ["node", str(DRIVER)], input=payload, capture_output=True, text=True,
         cwd=DRIVER.parent, timeout=180,

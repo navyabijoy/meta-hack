@@ -1,11 +1,12 @@
+*.pyc
 .env
+.next/
 .venv/
 __pycache__/
-*.pyc
-node_modules/
-runs/
-.next/
 budget/ledger.jsonl
-samples/
 budget/sam_cache/
 demo-app/
+github-app.pem
+node_modules/
+runs/
+samples/

@@ -21,8 +21,10 @@ from backend.pipeline.fix import git
 EVIDENCE_BRANCH = "repro-evidence"
 
 
-def gh(*args: str, cwd: Path) -> str:
-    r = subprocess.run(["gh", *args], cwd=cwd, capture_output=True, text=True)
+def gh(*args: str, cwd: Path, token: str | None = None) -> str:
+    import os
+    env = {**os.environ, "GH_TOKEN": token} if token else None
+    r = subprocess.run(["gh", *args], cwd=cwd, capture_output=True, text=True, env=env)
     if r.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args[:3])}: {r.stderr.strip()}")
     return r.stdout.strip()
@@ -69,14 +71,18 @@ def collect_evidence(summary: dict, run_dir: Path, dest: Path) -> dict:
     return files
 
 
-def push_evidence(repo: Path, run_id: str, src: Path) -> None:
+def remote(slug: str, token: str | None) -> str:
+    return f"https://x-access-token:{token}@github.com/{slug}.git" if token else "origin"
+
+
+def push_evidence(repo: Path, run_id: str, src: Path, origin: str = "origin") -> None:
     with tempfile.TemporaryDirectory() as tmp:
         wt = Path(tmp) / "ev"
-        exists = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", "origin", EVIDENCE_BRANCH],
+        exists = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", origin, EVIDENCE_BRANCH],
                                 cwd=repo, capture_output=True).returncode == 0
         if exists:
-            git(repo, "fetch", "-q", "origin", EVIDENCE_BRANCH)
-            git(repo, "worktree", "add", "-q", "-f", str(wt), f"origin/{EVIDENCE_BRANCH}")
+            git(repo, "fetch", "-q", origin, f"{EVIDENCE_BRANCH}:refs/remotes/origin/{EVIDENCE_BRANCH}", "--force")
+            git(repo, "worktree", "add", "-q", "-f", "--detach", str(wt), f"origin/{EVIDENCE_BRANCH}")
         else:
             git(repo, "worktree", "add", "-q", "--detach", str(wt))
             git(wt, "checkout", "-q", "--orphan", EVIDENCE_BRANCH)
@@ -87,7 +93,7 @@ def push_evidence(repo: Path, run_id: str, src: Path) -> None:
             git(wt, "add", "-A")
             git(wt, "-c", "user.name=repro[bot]", "-c", "user.email=repro-bot@users.noreply.github.com",
                 "commit", "-qm", f"evidence for run {run_id}")
-            git(wt, "push", "-q", "origin", f"HEAD:refs/heads/{EVIDENCE_BRANCH}")
+            git(wt, "push", "-q", origin, f"HEAD:refs/heads/{EVIDENCE_BRANCH}")
         finally:
             git(repo, "worktree", "remove", "--force", str(wt), check=False)
 
@@ -156,15 +162,17 @@ def _first_lines(s: str, n: int) -> str:
     return "\n".join([l for l in (s or "").splitlines() if l.strip()][:n])
 
 
-def open_pr(summary: dict, run_dir: Path, run_url: str | None = None, issue: int | None = None) -> str:
+def open_pr(summary: dict, run_dir: Path, run_url: str | None = None, issue: int | None = None,
+            token: str | None = None) -> str:
     if summary.get("status") != "fixed":
         raise RuntimeError("only fixed runs get a pull request")
     repo = Path(summary["repo"])
     slug = repo_slug(repo)
     files = collect_evidence(summary, run_dir, run_dir / "evidence")
-    push_evidence(repo, summary["id"], run_dir / "evidence")
+    origin = remote(slug, token)
+    push_evidence(repo, summary["id"], run_dir / "evidence", origin)
     raw = f"https://raw.githubusercontent.com/{slug}/{EVIDENCE_BRANCH}/{summary['id']}"
-    git(repo, "push", "-q", "-u", "origin", summary["branch"])
+    git(repo, "push", "-q", origin, f"{summary['branch']}:refs/heads/{summary['branch']}")
     body = pr_body(summary, files, raw, run_url, f"https://github.com/{slug}/blob/{summary['branch']}")
     if issue:
         body = f"Fixes #{issue}\n\n" + body
@@ -172,4 +180,4 @@ def open_pr(summary: dict, run_dir: Path, run_url: str | None = None, issue: int
     body_file.write_text(body)
     title = f"Fix: {summary['plan'].get('title')}"
     return gh("pr", "create", "--repo", slug, "--head", summary["branch"], "--base", summary["base"],
-              "--title", title, "--body-file", str(body_file), cwd=repo)
+              "--title", title, "--body-file", str(body_file), cwd=repo, token=token)

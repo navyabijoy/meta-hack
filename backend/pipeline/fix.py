@@ -14,6 +14,7 @@ from pathlib import Path
 
 from backend.models import muse_code
 from backend.pipeline.reproduce import run_test
+from backend.pipeline.workspace import Target
 
 MAX_ROUNDS = 3
 
@@ -79,7 +80,8 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(repo: Path, test_path: Path, plan: dict, failure: str, out: Path, on_event=None) -> FixResult:
+def run(tgt: Target, test_path: Path, plan: dict, failure: str, out: Path, on_event=None) -> FixResult:
+    repo = tgt.repo
     emit = on_event or (lambda *a, **k: None)
     test_code = test_path.read_text()
     test_hash = sha(test_path)
@@ -103,11 +105,11 @@ def run(repo: Path, test_path: Path, plan: dict, failure: str, out: Path, on_eve
             problem = "You made no change to the application source."
             test = {"passed": False, "failure": "no-change", "error": problem}
         else:
-            test = run_test(repo, test_path)
+            test = run_test(repo, test_path, tgt.env, tgt.cfg.test)
             if not test["passed"]:
                 problem = f"The test still fails:\n{test['error'][:1200]}"
             else:
-                suite = run_test(repo)
+                suite = run_test(repo, None, tgt.env, tgt.cfg.test)
                 if not suite["passed"]:
                     problem = f"The new test passes, but the existing suite now fails:\n{suite['error'][:1200]}"
 
