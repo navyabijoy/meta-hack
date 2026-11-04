@@ -243,17 +243,23 @@ def repos() -> list[dict]:
 
 
 def impact(repo: str | None = None, days: int = 30) -> dict:
-    since = time.time() - days * 86400
-    items = [b for b in bugs(repo) if b["created"] >= since and b["origin"] != "eval"]
+    now = time.time()
+    all_bugs = [b for b in bugs(repo) if b["origin"] != "eval"]
+    cur = _period(all_bugs, now - days * 86400, now)
+    prev = _period(all_bugs, now - 2 * days * 86400, now - days * 86400)
+    return {"days": days, **cur, "previous": prev,
+            "hours_saved_assumption": f"{HOURS_SAVED_PER_FIX} developer hours per verified fix (reproducing + fixing by hand)"}
+
+
+def _period(all_bugs: list[dict], start: float, end: float) -> dict:
+    items = [b for b in all_bugs if start <= b["created"] < end]
     fixed = [b for b in items if b["status"] == "fixed"]
     times = [b["seconds"] for b in fixed if b["seconds"]]
     return {
-        "days": days,
         "reports": len(items),
         "fixed": len(fixed),
         "merged": sum(1 for b in fixed if b["pr_state"] == "merged"),
         "declined": sum(1 for b in items if b["status"] == "not-reproduced"),
         "median_minutes_to_fix": round(statistics.median(times) / 60, 1) if times else None,
         "hours_saved": round(len(fixed) * HOURS_SAVED_PER_FIX, 1),
-        "hours_saved_assumption": f"{HOURS_SAVED_PER_FIX} developer hours per verified fix (reproducing + fixing by hand)",
     }
