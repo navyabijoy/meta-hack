@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gecko: send a video, get a fix</title>
 <meta name="description" content="Gecko watches a screen recording of a bug, reproduces it in a real browser, and opens a pull request that proves it and fixes it.">
+<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0d0c" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="__BASE__/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Gecko">
+<meta property="og:title" content="Gecko: send a video, get a fix">
+<meta property="og:description" content="Drop a screen recording of a bug. Gecko reproduces it in a real browser and opens a pull request that proves it and fixes it.">
+<meta property="og:url" content="__BASE__/">
+<meta property="og:image" content="__BASE__/static/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Gecko: send a video, get a fix">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gecko: send a video, get a fix">
+<meta name="twitter:description" content="Drop a screen recording of a bug. Gecko reproduces it and opens a pull request that proves it and fixes it.">
+<meta name="twitter:image" content="__BASE__/static/brand/og.png">
+<link rel="apple-touch-icon" href="/static/brand/logo-512.png">
 <link rel="icon" type="image/png" href="/static/brand/logo-64.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -352,6 +369,11 @@ footer { padding: 70px 0 0; overflow: hidden; }
   .powered { display: none; }
   .end-win .sun { left: 8%; top: 6%; }
 }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 100; padding: 10px 16px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 14px; transition: top .2s; }
+.skip:focus { top: 12px; }
+.nav .signin { font-size: 14px; color: var(--muted); padding: 9px 6px; transition: color .2s; }
+.nav .signin:hover { color: var(--ink); }
+:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; border-radius: 6px; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rv, .line > span, .fade-up { opacity: 1; transform: none; transition: none; animation: none; }
@@ -362,13 +384,17 @@ footer { padding: 70px 0 0; overflow: hidden; }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
-  <a href="/welcome" class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</a>
+  <a href="/" class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</a>
   <nav class="links"><a href="#how">How it works</a><a href="#run">Watch a run</a><a href="#trust">Guarantees</a><a href="#setup">Setup</a></nav>
   <div class="sp"></div>
-  <a class="pill" href="/">Open dashboard</a>
+  <a class="signin" href="/login">Sign in</a>
+  <a class="pill" href="/install">Add to GitHub</a>
 </header>
+
+<main id="main">
 
 <!-- HERO -->
 <section class="hero">
@@ -376,7 +402,7 @@ footer { padding: 70px 0 0; overflow: hidden; }
   <h1 class="serif" aria-label="Send a video. Get a fix."><span class="line"><span>Send a video.</span></span><span class="line"><span>Get a <em>fix</em>.</span></span></h1>
   <p class="sub fade-up">Gecko watches a screen recording of a bug, reproduces it in a real browser, and opens a pull request that proves it and fixes it.</p>
   <div class="cta fade-up d2">
-    <a class="pill" href="/github/setup">Add to GitHub</a>
+    <a class="pill" href="/install">Add to GitHub</a>
     <a class="pill ghost" href="#run">Watch a run</a>
   </div>
 </section>
@@ -583,9 +609,9 @@ footer { padding: 70px 0 0; overflow: hidden; }
   <h2 class="serif big rv">Three steps to your repo.</h2>
   <div class="setup-grid">
     <ol class="rv">
-      <li><div><b>Install the GitHub App</b><span>Create it from <code>/github/setup</code> on your Gecko server, then install it on a repo.</span></div></li>
+      <li><div><b>Add Gecko to GitHub</b><span>Pick the repositories Gecko should watch. Sign in with the same GitHub account to see your workspace.</span></div></li>
       <li><div><b>Add a <code>.gecko.yml</code></b><span>Tell Gecko how to install, start and test your app. Playwright reads its base URL from <code>GECKO_BASE_URL</code>.</span></div></li>
-      <li><div><b>Open an issue with a recording</b><span><code>gecko[bot]</code> replies "On it." and edits the comment with the result and the PR. Comment <code>/gecko</code> on older issues.</span></div></li>
+      <li><div><b>Share your report link</b><span>Support, QA or customers send a recording through it, no GitHub account needed. Gecko files the issue and opens the fix. You can also attach a video to any issue, or comment <code>/gecko</code> on an older one.</span></div></li>
     </ol>
     <div class="yml rv" id="yml">
       <div class="fn"><i></i><i></i><i></i>&nbsp;.gecko.yml</div>
@@ -613,19 +639,20 @@ footer { padding: 70px 0 0; overflow: hidden; }
     <span class="eyebrow"><i></i>Get started</span>
     <h2 class="serif">Quiet issues.<br><em>Caught</em> bugs.</h2>
     <p>Your users already record the bug. Let Gecko catch it.</p>
-    <div class="cta2"><a class="pill" href="/github/setup">Add to GitHub</a><a class="pill ghost" href="/">Open dashboard</a></div>
+    <div class="cta2"><a class="pill" href="/install">Add to GitHub</a><a class="pill ghost" href="/login">Sign in</a></div>
     <div class="small">Have an old issue? Comment <span class="mono">/gecko</span> on it.</div>
   </div></div>
   <div class="badges"><span>◇ Isolated runs</span><span>◇ Sandboxed Muse Code</span><span>◇ No training on your code</span></div>
 </section>
+</main>
 
 <footer>
   <div class="wrap">
     <div class="foot-grid">
       <div><div class="brand"><img src="/static/brand/logo.svg" alt="" width="24" height="24">Gecko</div><p>Send a video of a bug, get back a pull request that proves it and fixes it.</p></div>
       <div><h5>Product</h5><ul><li><a href="#how">How it works</a></li><li><a href="#run">Watch a run</a></li><li><a href="#trust">Guarantees</a></li></ul></div>
-      <div><h5>Developers</h5><ul><li><a href="#setup">Setup</a></li><li><a href="/docs">API docs</a></li><li><a href="/github/setup">GitHub App</a></li></ul></div>
-      <div><h5>Workspace</h5><ul><li><a href="/">Dashboard</a></li><li><a href="/ops">Ops</a></li></ul></div>
+      <div><h5>Developers</h5><ul><li><a href="#setup">Setup</a></li><li><a href="/docs">API docs</a></li><li><a href="/install">Install the GitHub App</a></li><li><a href="https://github.com/navyabijoy/meta-hack" rel="noopener">Source code</a></li></ul></div>
+      <div><h5>Account</h5><ul><li><a href="/login">Sign in</a></li><li><a href="/workspace">Workspace</a></li></ul></div>
     </div>
     <div class="wordmark serif" id="wordmark" aria-hidden="true">Gecko</div>
     <div class="legal"><span>Built for the Meta Global AI Developer Hackathon.</span><span>Gecko eats bugs.</span></div>

@@ -37,7 +37,7 @@ BOT_REPOS = set(filter(None, os.environ.get("GECKO_BOT_REPOS", "navyabijoy/taskl
 MAX_UPLOAD = 300 * 1024 * 1024
 VIDEO_TYPES = {".mp4", ".mov", ".m4v", ".webm"}
 
-app = FastAPI(title="Gecko")
+app = FastAPI(title="Gecko", docs_url=None, redoc_url=None, openapi_url=None)  # no public API explorer
 
 
 # ---------------------------------------------------------------- jobs and bot
@@ -424,7 +424,20 @@ def github_callback(code: str, state: str = ""):
 @app.get("/", response_class=HTMLResponse)
 @app.get("/welcome", response_class=HTMLResponse)
 def landing():
-    return (WEB / "landing.html").read_text()
+    # Share tags need absolute URLs.
+    return (WEB / "landing.html").read_text().replace("__BASE__", BASE_URL)
+
+
+@app.get("/install")
+def install():
+    """Public "Add to GitHub": GitHub's install page for the Gecko app."""
+    slug = github_app.env("GITHUB_APP_SLUG")
+    return RedirectResponse(f"https://github.com/apps/{slug}/installations/new" if slug else "/login", status_code=303)
+
+
+@app.get("/docs")
+def docs():
+    return RedirectResponse("https://github.com/navyabijoy/meta-hack/blob/main/docs/API.md", status_code=303)
 
 
 @app.get("/workspace", response_class=HTMLResponse)
