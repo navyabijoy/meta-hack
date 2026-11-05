@@ -153,10 +153,34 @@ Written by **Muse Code** with the failing test as its spec. Gecko verified that 
 
 The branch has two commits. Check out the first (`test: reproduce …`) to watch the test fail; the second is the fix.
 
+{_receipt(summary, sam)}
 ---
 <sub>Opened by Gecko · Meta API cost {f"${summary['usd']:.2f}" if summary.get('usd') is not None else ''} · {round(summary.get('seconds') or 0)}s from video to PR{f' · [run page]({run_url})' if run_url else ''}</sub>
 """
     return out
+
+
+def _receipt(summary: dict, sam: dict) -> str:
+    """A short table of what Gecko checked and what the run took. Any missing field is left out."""
+    try:
+        rows = [("Test fails on the base branch", "yes")]
+        if summary.get("reproduced"):
+            rows.append(("Replay matches the video's bug frame (Muse Spark)", "yes"))
+        if summary.get("attempts"):
+            rows.append(("Replay attempts", str(summary["attempts"])))
+        if sam.get("confidence"):
+            rows.append(("Click grounding confidence (SAM 3.1)", str(sam["confidence"])))
+        if summary.get("fix_rounds"):
+            rows.append(("Muse Code fix rounds", str(summary["fix_rounds"])))
+        rows.append(("Test passes after the fix, test file unchanged, suite green", "yes"))
+        if summary.get("usd") is not None:
+            rows.append(("Meta API cost", f"${summary['usd']:.2f}"))
+        if summary.get("seconds"):
+            rows.append(("Time from video to PR", f"{round(summary['seconds'])} s"))
+        table = "\n".join(f"| {k} | {v} |" for k, v in rows)
+        return f"## Verification receipt\n\n| Check | Result |\n| --- | --- |\n{table}\n"
+    except Exception:
+        return ""
 
 
 def _first_lines(s: str, n: int) -> str:

@@ -8,6 +8,10 @@ Every claim Gecko makes is checked by running code. When it cannot reproduce a b
 
 Built for the Meta Global AI Developer Hackathon (Startup track, *Push the Frontier*).
 
+**At a glance:** 4 of 4 eval cases correct, including one where Gecko correctly declines a bug that isn't there · median **139 s** from video to verified fix · median **$0.12** of Meta API cost per run ([results](eval/results.md)). Sample bug recordings: [double-save](eval/videos/double-save.mp4), [wrong-delete](eval/videos/wrong-delete.mp4), [counter](eval/videos/counter.mp4), [not-a-bug-reload](eval/videos/not-a-bug-reload.mp4).
+
+**Meta models used:** Muse Spark (reads the video, plans the steps, judges the replay against the bug frame, proposes hypotheses), SAM 3.1 (finds the cursor and the clicked element), Muse Voice Transcribe (narration), Muse Code (writes the fix against the failing test).
+
 ## How it works
 
 | Stage | What happens | Meta model |
@@ -68,7 +72,7 @@ fresh_state: [localStorage]
 
 `python -m eval.run_eval` runs every case in `eval/cases.yml` end to end and checks each fix against a **hidden, hand-written reference test** Gecko never sees. Results: [eval/results.md](eval/results.md).
 
-Be clear about what this shows: four cases (three real bugs and one report of a bug that isn't there, which Gecko correctly declines), all on one small demo app, with recordings made by script. It shows the pipeline works end to end and that its checks are real, not that it generalises. The first full run scored 3 of 4; the miss is documented in the results file along with its fix.
+Be clear about what this shows: four cases (three real bugs and one report of a bug that isn't there, which Gecko correctly declines), all on one small demo app, with recordings made by script. It shows the pipeline works end to end and that its checks are real, not that it generalises. The first full run scored 3 of 4; the miss is documented in the results file along with its fix, and the current run scores 4 of 4 (median 139 s and $0.12 per run).
 
 ## Limits today
 
@@ -99,7 +103,7 @@ echo 'MODEL_API_KEY=...' > .env            # Meta Model API key
 .venv/bin/python -m backend.pipeline.run path/to/bug.mp4 --repo navyabijoy/taskly
 ```
 
-Spend is capped: every Meta API call goes through `backend/models/budget.py`, which logs cost and refuses calls past `GECKO_BUDGET_USD` (default $100). A full run costs about $0.15–0.25.
+Spend is capped: every Meta API call goes through `backend/models/budget.py`, which logs cost and refuses calls past `GECKO_BUDGET_USD` (default $100). In the eval a run cost $0.08–0.18 (median $0.12).
 
 ## Layout
 
